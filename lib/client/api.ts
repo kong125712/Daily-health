@@ -30,11 +30,16 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     headers.set("x-app-locale", options.locale);
   }
 
-  const response = await fetch(path, {
-    method: options.method ?? (options.body === undefined ? "GET" : "POST"),
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: options.method ?? (options.body === undefined ? "GET" : "POST"),
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+  } catch {
+    throw new Error("Unable to reach the Daily Health server. Please make sure it is running and refresh the page.");
+  }
 
   const data = (await response.json()) as unknown;
   if (!response.ok) {

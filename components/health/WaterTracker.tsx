@@ -13,19 +13,27 @@ export function WaterTracker({ date, onChange }: { date: string; onChange?: () =
   const [custom, setCustom] = useState("");
   const [target, setTarget] = useState(defaultWaterTargetMl.toString());
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const showError = useCallback((error: unknown) => {
+    setError(error instanceof Error ? error.message : t("common.error"));
+  }, [t]);
 
   const load = useCallback(async () => {
     if (!profileId) return;
     setLoading(true);
     try {
+      setError("");
       const response = await apiFetch<{ water: WaterSummary }>(`/api/water?date=${date}`, { profileId, locale });
       setWater(response.water);
       setTarget(response.water.targetMl.toString());
       onChange?.();
+    } catch (error) {
+      showError(error);
     } finally {
       setLoading(false);
     }
-  }, [date, locale, onChange, profileId]);
+  }, [date, locale, onChange, profileId, showError]);
 
   useEffect(() => {
     void load();
@@ -33,40 +41,55 @@ export function WaterTracker({ date, onChange }: { date: string; onChange?: () =
 
   async function add(amountMl: number) {
     if (!profileId) return;
-    const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
-      method: "POST",
-      profileId,
-      locale,
-      body: { profileId, date, amountMl }
-    });
-    setWater(response.water);
-    onChange?.();
+    try {
+      setError("");
+      const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
+        method: "POST",
+        profileId,
+        locale,
+        body: { profileId, date, amountMl }
+      });
+      setWater(response.water);
+      onChange?.();
+    } catch (error) {
+      showError(error);
+    }
   }
 
   async function saveTarget() {
     if (!profileId) return;
     const next = Number(target);
-    const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
-      method: "PATCH",
-      profileId,
-      locale,
-      body: { profileId, date, targetMl: next }
-    });
-    setWater(response.water);
-    setDefaultWaterTargetMl(next);
-    onChange?.();
+    try {
+      setError("");
+      const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
+        method: "PATCH",
+        profileId,
+        locale,
+        body: { profileId, date, targetMl: next }
+      });
+      setWater(response.water);
+      setDefaultWaterTargetMl(next);
+      onChange?.();
+    } catch (error) {
+      showError(error);
+    }
   }
 
   async function reset() {
     if (!profileId) return;
-    const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
-      method: "DELETE",
-      profileId,
-      locale,
-      body: { profileId, date }
-    });
-    setWater(response.water);
-    onChange?.();
+    try {
+      setError("");
+      const response = await apiFetch<{ water: WaterSummary }>("/api/water", {
+        method: "DELETE",
+        profileId,
+        locale,
+        body: { profileId, date }
+      });
+      setWater(response.water);
+      onChange?.();
+    } catch (error) {
+      showError(error);
+    }
   }
 
   if (loading && !water) {
@@ -81,6 +104,7 @@ export function WaterTracker({ date, onChange }: { date: string; onChange?: () =
         <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("water.total")}</h2>
         <Droplets className="h-5 w-5 text-leaf" aria-hidden="true" />
       </div>
+      {error ? <p className="rounded border border-berry/30 bg-berry/10 px-3 py-2 text-sm font-medium text-berry">{error}</p> : null}
       <div>
         <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
           <span>{water?.totalMl ?? 0} ml</span>
