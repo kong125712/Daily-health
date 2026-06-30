@@ -185,5 +185,7 @@ export const zhCN: Record<keyof typeof en, string> = {
   "myRecipes.title": "我的菜谱",
   "myRecipes.empty": "收藏菜谱会显示在这里。",
   "error.openaiRecognition": "尚未设置 AI 识别服务。请先在 .env.local 中设置 OPENAI_API_KEY。",
-  "error.openaiRecipe": "尚未设置 AI 菜谱生成服务。请先在 .env.local 中设置 OPENAI_API_KEY。"
+  "error.openaiRecipe": "尚未设置 AI 菜谱生成服务。请先在 .env.local 中设置 OPENAI_API_KEY。",
+  "error.geminiRecognition": "尚未设置 AI 识别服务。请先在 .env.local 中设置 GEMINI_API_KEY。",
+  "error.geminiRecipe": "尚未设置 AI 菜谱生成服务。请先在 .env.local 中设置 GEMINI_API_KEY。"
 };
