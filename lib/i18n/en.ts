@@ -182,6 +182,8 @@ export const en = {
   "history.recipes": "Recipes created or saved",
   "myRecipes.title": "My Recipes",
   "myRecipes.empty": "Saved recipes will appear here.",
-  "error.openaiRecognition": "AI recognition service is not configured. Set OPENAI_API_KEY for OpenAI, or set AI_PROVIDER=gemini and GEMINI_API_KEY.",
-  "error.openaiRecipe": "AI recipe generation is not configured. Set OPENAI_API_KEY for OpenAI, or set AI_PROVIDER=gemini and GEMINI_API_KEY."
+  "error.openaiRecognition": "AI recognition service is not configured. Please add OPENAI_API_KEY to .env.local.",
+  "error.openaiRecipe": "AI recipe generation is not configured. Please add OPENAI_API_KEY to .env.local.",
+  "error.geminiRecognition": "AI recognition service is not configured. Please add GEMINI_API_KEY to .env.local.",
+  "error.geminiRecipe": "AI recipe generation is not configured. Please add GEMINI_API_KEY to .env.local."
 } as const;

@@ -184,6 +184,8 @@ export const zhCN: Record<keyof typeof en, string> = {
   "history.recipes": "创建或收藏的菜谱",
   "myRecipes.title": "我的菜谱",
   "myRecipes.empty": "收藏菜谱会显示在这里。",
-  "error.openaiRecognition": "尚未设置 AI 识别服务。使用 OpenAI 请设置 OPENAI_API_KEY；使用 Gemini 请设置 AI_PROVIDER=gemini 和 GEMINI_API_KEY。",
-  "error.openaiRecipe": "尚未设置 AI 菜谱生成服务。使用 OpenAI 请设置 OPENAI_API_KEY；使用 Gemini 请设置 AI_PROVIDER=gemini 和 GEMINI_API_KEY。"
+  "error.openaiRecognition": "尚未设置 AI 识别服务。请先在 .env.local 中设置 OPENAI_API_KEY。",
+  "error.openaiRecipe": "尚未设置 AI 菜谱生成服务。请先在 .env.local 中设置 OPENAI_API_KEY。",
+  "error.geminiRecognition": "尚未设置 AI 识别服务。请先在 .env.local 中设置 GEMINI_API_KEY。",
+  "error.geminiRecipe": "尚未设置 AI 菜谱生成服务。请先在 .env.local 中设置 GEMINI_API_KEY。"
 };

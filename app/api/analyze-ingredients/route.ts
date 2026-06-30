@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!recognized.ok) {
-      return jsonMessageError(locale, "error.openaiRecognition", 503);
+      const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
+      return jsonMessageError(
+        locale,
+        isGemini ? "error.geminiRecognition" : "error.openaiRecognition",
+        503
+      );
     }
 
     const scan = await createIngredientScan({

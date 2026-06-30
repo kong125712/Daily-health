@@ -112,6 +112,8 @@ export async function recognizeIngredientsWithGeminiImpl(input: {
   const mimeType = matches[1];
   const base64Data = matches[2];
 
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+
   const prompt = [
     "Analyze the image for visible food, ingredients, beverages, and obvious seasonings only.",
     "Do not invent hidden ingredients. If no food is identifiable, return an empty ingredients array.",
@@ -151,6 +153,8 @@ export async function generateRecipesWithGeminiImpl(input: {
   const genAI = getGeminiClient();
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+
   const ingredientText = input.ingredients
     .map(i => `${i.displayNameEn} (${i.normalizedName}) - ${i.estimatedAmount}`)
     .join("\n");
@@ -180,35 +184,25 @@ export async function generateRecipesWithGeminiImpl(input: {
     "Preferences:",
     JSON.stringify(input.preferences),
     "",
-    "Required JSON shape:",
+    "Return JSON only, matching this exact shape (all string fields must be plain strings, never objects or arrays):",
     JSON.stringify({
       recipes: [
         {
-          cuisineStyle: "home cooking",
-          difficulty: "easy",
-          estimatedCookingMinutes: 20,
-          servings: 2,
-          estimatedCaloriesPerServing: 350,
+          cuisineStyle: "string",
+          difficulty: "easy | medium",
+          estimatedCookingMinutes: 0,
+          servings: 0,
+          estimatedCaloriesPerServing: 0,
           translations: [
-            {
-              locale: "en",
-              title: "Recipe title",
-              shortDescription: "One short sentence.",
-              nutritionDisclaimer: "Estimated nutrition is for everyday reference only."
-            },
-            {
-              locale: "zh-CN",
-              title: "菜谱标题",
-              shortDescription: "一句简短描述。",
-              nutritionDisclaimer: "营养估算仅供日常参考。"
-            }
+            { locale: "en", title: "string", shortDescription: "string", nutritionDisclaimer: "string" },
+            { locale: "zh-CN", title: "string", shortDescription: "string", nutritionDisclaimer: "string" }
           ],
           ingredients: [
             {
-              normalizedName: "egg",
-              nameEn: "egg",
-              nameZh: "鸡蛋",
-              amount: "2 pieces",
+              normalizedName: "string",
+              nameEn: "string",
+              nameZh: "string",
+              amount: "string",
               isRecognizedIngredient: true,
               isOptional: false
             }
@@ -216,29 +210,19 @@ export async function generateRecipesWithGeminiImpl(input: {
           steps: [
             {
               stepNumber: 1,
-              estimatedMinutes: 5,
-              instructionEn: "Cook the ingredients safely.",
-              instructionZh: "安全地烹饪食材。"
+              estimatedMinutes: 0,
+              instructionEn: "string",
+              instructionZh: "string"
             }
           ],
-          tips: [
-            {
-              contentEn: "Taste and adjust seasoning.",
-              contentZh: "试味后调整调味。"
-            }
-          ],
+          tips: [{ contentEn: "string", contentZh: "string" }],
           missingIngredients: [
-            {
-              normalizedName: "salt",
-              nameEn: "salt",
-              nameZh: "盐",
-              isOptional: true
-            }
+            { normalizedName: "string", nameEn: "string", nameZh: "string", isOptional: true }
           ]
         }
       ]
     }),
-    "The recipes array must contain exactly 3 recipe objects matching this shape.",
+    "The top-level recipes array must contain exactly 3 items.",
     `The user is currently viewing the app in ${input.locale}.`,
   ].join("\n");
 

@@ -57,7 +57,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!generated.ok) {
-      return jsonMessageError(locale, "error.openaiRecipe", 503);
+      const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
+      return jsonMessageError(
+        locale,
+        isGemini ? "error.geminiRecipe" : "error.openaiRecipe",
+        503
+      );
     }
 
     const recipes = await createRecipes({
