@@ -75,7 +75,7 @@ export async function generateRecipesWithGeminiImpl(input: {
   const genAI = getGeminiClient();
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
   const ingredientText = input.ingredients
     .map(i => `${i.displayNameEn} (${i.normalizedName}) - ${i.estimatedAmount}`)
@@ -103,8 +103,45 @@ export async function generateRecipesWithGeminiImpl(input: {
     "Preferences:",
     JSON.stringify(input.preferences),
     "",
-    "Schema summary:",
-    "recipes[].cuisineStyle, difficulty easy|medium, estimatedCookingMinutes, servings, estimatedCaloriesPerServing, translations[en and zh-CN], ingredients, steps, tips, missingIngredients.",
+    "Return JSON only, matching this exact shape (all string fields must be plain strings, never objects or arrays):",
+    JSON.stringify({
+      recipes: [
+        {
+          cuisineStyle: "string",
+          difficulty: "easy | medium",
+          estimatedCookingMinutes: 0,
+          servings: 0,
+          estimatedCaloriesPerServing: 0,
+          translations: [
+            { locale: "en", title: "string", shortDescription: "string", nutritionDisclaimer: "string" },
+            { locale: "zh-CN", title: "string", shortDescription: "string", nutritionDisclaimer: "string" }
+          ],
+          ingredients: [
+            {
+              normalizedName: "string",
+              nameEn: "string",
+              nameZh: "string",
+              amount: "string",
+              isRecognizedIngredient: true,
+              isOptional: false
+            }
+          ],
+          steps: [
+            {
+              stepNumber: 1,
+              estimatedMinutes: 0,
+              instructionEn: "string",
+              instructionZh: "string"
+            }
+          ],
+          tips: [{ contentEn: "string", contentZh: "string" }],
+          missingIngredients: [
+            { normalizedName: "string", nameEn: "string", nameZh: "string", isOptional: true }
+          ]
+        }
+      ]
+    }),
+    "The top-level recipes array must contain exactly 3 items.",
     `The user is currently viewing the app in ${input.locale}.`,
   ].join("\n");
 
