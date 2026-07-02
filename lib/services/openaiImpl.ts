@@ -113,7 +113,7 @@ export async function generateRecipesWithOpenAIImpl(input: {
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
     "Use structured JSON only with a top-level recipes array of exactly 3 items.",
-    "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use concrete dish/ingredient words, no brands and no punctuation.",
+    "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use the most common English dish name when possible, such as tomato egg stir fry or chicken curry. Do not use broad labels such as egg breakfast, protein meal, or healthy bowl. Use concrete dish/ingredient words, no brands and no punctuation.",
     "",
     "Visible or user-confirmed ingredients:",
     ingredientText || "No ingredients provided.",

@@ -10,7 +10,7 @@ type RecipeReferenceImageProps = {
   compact?: boolean;
 };
 
-const referencePhotos = [
+const fallbackPhotos = [
   {
     keywords: ["salad", "vegetable", "vegetarian", "light", "greens"],
     url: "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=1200&q=80"
@@ -57,55 +57,82 @@ function hashText(text: string) {
   return Array.from(text).reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
 }
 
-function referenceText(recipe: RecipeView, locale: "en" | "zh-CN") {
-  const translation = recipeTranslation(recipe, locale);
-  const ingredients = recipe.ingredients
-    .slice(0, 4)
-    .map((ingredient) => ingredientName(ingredient, "en"))
+function cleanSearchText(text: string) {
+  return text
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\b(recipe|healthy|easy|quick|simple|homemade|style|with|and|the|a|an)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 8)
     .join(" ");
-  return [
-    recipe.referenceImageQuery,
-    translation?.title,
-    recipe.cuisineStyle,
-    ingredients
-  ].filter(Boolean).join(" ").toLowerCase();
 }
 
-function pickPhoto(recipe: RecipeView, locale: "en" | "zh-CN") {
-  const text = referenceText(recipe, locale);
-  const matched = referencePhotos.find((photo) =>
+function imageSearchText(recipe: RecipeView, locale: "en" | "zh-CN") {
+  const englishTitle = recipeTranslation(recipe, "en")?.title;
+  const localizedTitle = recipeTranslation(recipe, locale)?.title;
+  const ingredients = recipe.ingredients
+    .slice(0, 3)
+    .map((ingredient) => ingredientName(ingredient, "en"))
+    .join(" ");
+  const searchText = cleanSearchText([
+    englishTitle,
+    recipe.referenceImageQuery,
+    localizedTitle,
+    recipe.cuisineStyle,
+    ingredients
+  ].filter(Boolean).join(" "));
+  return searchText || "home cooked food";
+}
+
+function specificPhotoUrl(recipe: RecipeView, locale: "en" | "zh-CN") {
+  const searchText = imageSearchText(recipe, locale);
+  const lock = Math.abs(hashText(`${recipe.id}:${searchText}`)) % 100000;
+  return `https://loremflickr.com/1200/900/${encodeURIComponent(`${searchText} food dish`)}?lock=${lock}`;
+}
+
+function pickFallbackPhoto(recipe: RecipeView, locale: "en" | "zh-CN") {
+  const text = imageSearchText(recipe, locale).toLowerCase();
+  const matched = fallbackPhotos.find((photo) =>
     photo.keywords.some((keyword) => text.includes(keyword))
   );
   if (matched) {
     return matched.url;
   }
 
-  const generalPhotos = referencePhotos.filter((photo) => photo.keywords.length > 0);
-  return generalPhotos[Math.abs(hashText(text)) % generalPhotos.length]?.url ?? referencePhotos[referencePhotos.length - 1].url;
+  const generalPhotos = fallbackPhotos.filter((photo) => photo.keywords.length > 0);
+  return generalPhotos[Math.abs(hashText(text)) % generalPhotos.length]?.url ?? fallbackPhotos[fallbackPhotos.length - 1].url;
 }
 
 export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenceImageProps) {
   const { locale, t } = useApp();
-  const [imageFailed, setImageFailed] = useState(false);
+  const [failedUrls, setFailedUrls] = useState<string[]>([]);
   const translation = recipeTranslation(recipe, locale);
   const title = translation?.title ?? recipe.referenceImageQuery ?? recipe.cuisineStyle;
-  const query = recipe.referenceImageQuery ?? title;
+  const primaryImageUrl = specificPhotoUrl(recipe, locale);
+  const fallbackImageUrl = pickFallbackPhoto(recipe, locale);
+  const imageUrl = failedUrls.includes(primaryImageUrl)
+    ? failedUrls.includes(fallbackImageUrl)
+      ? null
+      : fallbackImageUrl
+    : primaryImageUrl;
 
   return (
     <div className={`relative overflow-hidden rounded-md bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-emerald-950 dark:via-slate-900 dark:to-amber-950 ${compact ? "aspect-[16/9]" : "aspect-[4/3]"}`}>
-      {!imageFailed ? (
+      {imageUrl ? (
         <img
           alt={`${title} ${t("recipes.referenceImage")}`}
           className="h-full w-full object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
-          src={pickPhoto(recipe, locale)}
-          onError={() => setImageFailed(true)}
+          src={imageUrl}
+          onError={() => setFailedUrls((current) => current.includes(imageUrl) ? current : [...current, imageUrl])}
         />
       ) : null}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent p-3 text-white">
         <p className="text-xs font-semibold uppercase tracking-normal opacity-90">{t("recipes.referenceImage")}</p>
-        <p className="line-clamp-1 text-sm font-semibold">{query}</p>
+        <p className="line-clamp-1 text-sm font-semibold">{title}</p>
       </div>
     </div>
   );
