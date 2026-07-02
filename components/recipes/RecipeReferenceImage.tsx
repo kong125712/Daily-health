@@ -15,7 +15,7 @@ type ResolvedRecipeImage = {
   url: string;
   sourceTitle: string;
   sourceUrl: string;
-  provider: "themealdb" | "wikipedia" | "wikimedia";
+  provider: "ai" | "local" | "themealdb" | "wikipedia" | "wikimedia";
   crop?: {
     xPercent: number;
     yPercent: number;

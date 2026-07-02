@@ -64,6 +64,14 @@ DATABASE_URL="file:./daily-health.db"
 AI_PROVIDER=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+RECIPE_IMAGE_PROVIDER=local
+LOCAL_IMAGE_API=comfyui
+COMFYUI_URL=http://127.0.0.1:8188
+COMFYUI_CHECKPOINT=
+COMFYUI_IMAGE_WIDTH=768
+COMFYUI_IMAGE_HEIGHT=576
+COMFYUI_STEPS=18
 EPICURE_MCP_URL=https://epicure-mcp.kaikaku.ai/mcp
 ```
 
@@ -72,6 +80,10 @@ EPICURE_MCP_URL=https://epicure-mcp.kaikaku.ai/mcp
 Set `AI_PROVIDER` as `openai` OR `gemini` to select the ai provider.
 
 Set `OPENAI_API_KEY` OR `GEMINI_API_KEY` to enable Smart Scan and recipe generation. Without it, the app shows a friendly setup message instead of exposing technical details.
+
+Recipe reference photos default to local generation through ComfyUI. Standard ComfyUI often uses `http://127.0.0.1:8188`; the ComfyUI Desktop app may use `http://127.0.0.1:8000`. Set `COMFYUI_URL` to whichever `/system_stats` endpoint responds, then keep `RECIPE_IMAGE_PROVIDER=local` and `LOCAL_IMAGE_API=comfyui`. The app automatically reads the first available checkpoint unless `COMFYUI_CHECKPOINT` is set to a specific checkpoint filename.
+
+Set `RECIPE_IMAGE_PROVIDER=gemini` only if you want Gemini to generate recipe reference photos instead of local ComfyUI. `GEMINI_IMAGE_MODEL` chooses the Gemini image model for that mode.
 
 `EPICURE_MCP_URL` defaults to the hosted Epicure MCP endpoint above. Override it only if you want to use another Epicure MCP service.
 

@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest } from "next/server";
 import { jsonOk } from "@/lib/server/http";
 
-type RecipeImageProvider = "themealdb" | "wikipedia" | "wikimedia";
+type RecipeImageProvider = "ai" | "local" | "themealdb" | "wikipedia" | "wikimedia";
 
 type RecipeImage = {
   url: string;
@@ -79,6 +79,17 @@ type MealDbResponse = {
   meals?: MealDbMeal[] | null;
 };
 
+type GeminiImageBlock = {
+  data: string;
+  mimeType: string;
+};
+
+type ComfyUiImageInfo = {
+  filename: string;
+  subfolder?: string;
+  type?: string;
+};
+
 const rejectedTitleWords = [
   "logo",
   "map",
@@ -115,6 +126,9 @@ const stopWords = new Set([
   "the",
   "with"
 ]);
+
+const generatedImageCache = new Map<string, RecipeImage>();
+const maxGeneratedImageCacheItems = 24;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -293,7 +307,48 @@ function getGeminiClient() {
 }
 
 function getGeminiModelName() {
-  return process.env.GEMINI_IMAGE_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || "gemini-flash-lite-latest";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-flash-lite-latest";
+}
+
+function getGeminiImageModelNames() {
+  const configuredModel = process.env.GEMINI_IMAGE_MODEL?.trim();
+  return Array.from(new Set([
+    configuredModel,
+    "gemini-3.1-flash-image",
+    "gemini-2.5-flash-image"
+  ].filter((model): model is string => Boolean(model))));
+}
+
+function getRecipeImageProvider() {
+  const provider = process.env.RECIPE_IMAGE_PROVIDER?.trim().toLowerCase();
+  if (provider === "gemini" || provider === "local") return provider;
+  return "local";
+}
+
+function getSdWebUiUrl() {
+  return (process.env.SD_WEBUI_URL?.trim() || "http://127.0.0.1:7860").replace(/\/+$/, "");
+}
+
+function getComfyUiUrl() {
+  return (process.env.COMFYUI_URL?.trim() || "http://127.0.0.1:8188").replace(/\/+$/, "");
+}
+
+function getLocalImageApi() {
+  const localApi = process.env.LOCAL_IMAGE_API?.trim().toLowerCase();
+  if (localApi === "sdwebui" || localApi === "comfyui") return localApi;
+  return "comfyui";
+}
+
+function integerEnv(name: string, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(clamp(parsed, min, max));
+}
+
+function floatEnv(name: string, fallback: number, min: number, max: number) {
+  const parsed = Number.parseFloat(process.env[name] ?? "");
+  if (!Number.isFinite(parsed)) return fallback;
+  return clamp(parsed, min, max);
 }
 
 function parseJsonFromText(text: string): unknown {
@@ -314,6 +369,556 @@ function recipeContextQueries(context: RecipeImageContext) {
     context.referenceImageQuery && context.cuisineStyle ? `${context.referenceImageQuery} ${context.cuisineStyle}` : null,
     context.title && ingredientText ? `${context.title} ${ingredientText}` : null
   ]);
+}
+
+function recipeImageCacheKey(context: RecipeImageContext, provider: string) {
+  return `${provider}:${normalizeText([
+    context.title,
+    context.referenceImageQuery,
+    context.cuisineStyle,
+    ...(context.ingredients ?? []),
+    ...(context.queries ?? [])
+  ].filter(Boolean).join("|")).slice(0, 700)}`;
+}
+
+function setGeneratedImageCache(key: string, image: RecipeImage) {
+  if (!key) return;
+  generatedImageCache.set(key, image);
+  while (generatedImageCache.size > maxGeneratedImageCacheItems) {
+    const firstKey = generatedImageCache.keys().next().value;
+    if (!firstKey) break;
+    generatedImageCache.delete(firstKey);
+  }
+}
+
+function generatedDishImagePrompt(context: RecipeImageContext) {
+  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "healthy home-cooked dish";
+  const ingredients = (context.ingredients ?? []).slice(0, 8);
+
+  return [
+    "Create one photorealistic reference image for a health recipe app.",
+    "The image must show exactly one finished cooked dish as the clear main subject.",
+    "Use a tight crop around one plate, bowl, or serving container with the whole dish visible.",
+    "Do not show multiple dishes, raw ingredient piles, packaging, menus, logos, text, people, hands, utensils covering the food, or a busy table spread.",
+    "No labels, no watermark, no typography, no decorative frame.",
+    "Make the food match the recipe title, cuisine style, and main ingredients. If the context is uncertain, infer a realistic finished version from the title and ingredients.",
+    "Use natural light, appetizing but realistic plating, and a neutral simple background.",
+    "",
+    "Recipe context:",
+    `Title: ${title}`,
+    `Reference dish query: ${context.referenceImageQuery ?? ""}`,
+    `Cuisine style: ${context.cuisineStyle ?? ""}`,
+    `Main ingredients: ${ingredients.join(", ") || "not specified"}`
+  ].join("\n");
+}
+
+function stableDiffusionPrompt(context: RecipeImageContext) {
+  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "healthy home-cooked dish";
+  const ingredients = (context.ingredients ?? []).slice(0, 8).join(", ");
+  const cuisine = context.cuisineStyle ? `${context.cuisineStyle} cuisine` : "";
+
+  return [
+    "professional realistic food photography",
+    "exactly one finished cooked dish",
+    "single plate or single bowl",
+    "tight centered crop",
+    "whole dish visible",
+    "natural light",
+    "appetizing realistic plating",
+    "simple neutral background",
+    `dish name: ${title}`,
+    cuisine,
+    ingredients ? `main ingredients: ${ingredients}` : ""
+  ].filter(Boolean).join(", ");
+}
+
+function stableDiffusionNegativePrompt() {
+  return [
+    process.env.SD_IMAGE_NEGATIVE_PROMPT?.trim(),
+    "multiple dishes",
+    "several plates",
+    "raw ingredients",
+    "ingredient pile",
+    "people",
+    "hands",
+    "face",
+    "menu",
+    "packaging",
+    "logo",
+    "watermark",
+    "text",
+    "caption",
+    "bad crop",
+    "blurry",
+    "low quality",
+    "deformed food",
+    "messy table"
+  ].filter(Boolean).join(", ");
+}
+
+function sdWebUiHeaders() {
+  const auth = process.env.SD_WEBUI_AUTH?.trim();
+  return {
+    "content-type": "application/json",
+    ...(auth ? { authorization: `Basic ${Buffer.from(auth).toString("base64")}` } : {})
+  };
+}
+
+function comfyUiHeaders(includeJson = true) {
+  const auth = process.env.COMFYUI_AUTH?.trim();
+  return {
+    ...(includeJson ? { "content-type": "application/json" } : {}),
+    ...(auth ? { authorization: `Basic ${Buffer.from(auth).toString("base64")}` } : {})
+  };
+}
+
+function stripDataImagePrefix(imageData: string) {
+  return imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
+}
+
+async function requestGeneratedImageFromSdWebUi(context: RecipeImageContext) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), integerEnv("SD_IMAGE_TIMEOUT_MS", 120_000, 10_000, 600_000));
+
+  try {
+    const response = await fetch(`${getSdWebUiUrl()}/sdapi/v1/txt2img`, {
+      method: "POST",
+      headers: sdWebUiHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        prompt: stableDiffusionPrompt(context),
+        negative_prompt: stableDiffusionNegativePrompt(),
+        sampler_name: process.env.SD_IMAGE_SAMPLER?.trim() || "Euler a",
+        steps: integerEnv("SD_IMAGE_STEPS", 18, 1, 80),
+        cfg_scale: floatEnv("SD_IMAGE_CFG_SCALE", 6, 1, 20),
+        width: integerEnv("SD_IMAGE_WIDTH", 768, 256, 1536),
+        height: integerEnv("SD_IMAGE_HEIGHT", 576, 256, 1536),
+        batch_size: 1,
+        n_iter: 1,
+        seed: integerEnv("SD_IMAGE_SEED", -1, -1, 2_147_483_647),
+        restore_faces: false,
+        tiling: false,
+        save_images: false
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.warn(`Local recipe image generation failed: ${response.status} ${text.slice(0, 300)}`);
+      return null;
+    }
+
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!isRecord(payload) || !Array.isArray(payload.images) || typeof payload.images[0] !== "string") {
+      console.warn("Local recipe image generation returned an unexpected response.");
+      return null;
+    }
+
+    return {
+      data: stripDataImagePrefix(payload.images[0]),
+      mimeType: "image/png"
+    };
+  } catch (error) {
+    console.warn("Local recipe image generation request failed", error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateRecipeImageWithLocalSd(context: RecipeImageContext) {
+  const cacheKey = recipeImageCacheKey(context, "local-sd");
+  if (generatedImageCache.has(cacheKey)) {
+    return generatedImageCache.get(cacheKey) ?? null;
+  }
+
+  const imageBlock = await requestGeneratedImageFromSdWebUi(context);
+  if (!imageBlock) return null;
+
+  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
+  const image: RecipeImage = {
+    url: `data:${imageBlock.mimeType};base64,${imageBlock.data}`,
+    sourceTitle: `${title} local AI generated reference`,
+    sourceUrl: getSdWebUiUrl(),
+    provider: "local",
+    aiSelected: true,
+    aiReason: "Generated from the recipe context with local Stable Diffusion WebUI."
+  };
+  setGeneratedImageCache(cacheKey, image);
+  return image;
+}
+
+function imageDimensionEnv(primaryName: string, fallbackName: string, fallback: number) {
+  const value = integerEnv(primaryName, integerEnv(fallbackName, fallback, 256, 1536), 256, 1536);
+  return Math.round(value / 8) * 8;
+}
+
+function comfyUiSeed() {
+  const configured = integerEnv("COMFYUI_SEED", integerEnv("SD_IMAGE_SEED", -1, -1, 2_147_483_647), -1, 2_147_483_647);
+  return configured >= 0 ? configured : Math.floor(Math.random() * 2_147_483_647);
+}
+
+function comfyUiSampler() {
+  return process.env.COMFYUI_SAMPLER?.trim() || "euler";
+}
+
+function comfyUiScheduler() {
+  return process.env.COMFYUI_SCHEDULER?.trim() || "normal";
+}
+
+async function getComfyUiCheckpoint() {
+  const configured = process.env.COMFYUI_CHECKPOINT?.trim();
+  if (configured) return configured;
+
+  try {
+    const response = await fetch(`${getComfyUiUrl()}/object_info/CheckpointLoaderSimple`, {
+      headers: comfyUiHeaders(false)
+    });
+    if (!response.ok) return null;
+
+    const payload = (await response.json().catch(() => null)) as {
+      CheckpointLoaderSimple?: {
+        input?: {
+          required?: {
+            ckpt_name?: unknown;
+          };
+        };
+      };
+    } | null;
+    const ckptName = payload?.CheckpointLoaderSimple?.input?.required?.ckpt_name;
+    const choices = Array.isArray(ckptName) && Array.isArray(ckptName[0]) ? ckptName[0] : [];
+    return choices.find((choice): choice is string => typeof choice === "string") ?? null;
+  } catch (error) {
+    console.warn("Could not read ComfyUI checkpoint list", error);
+    return null;
+  }
+}
+
+function comfyUiWorkflow(context: RecipeImageContext, ckptName: string) {
+  return {
+    "3": {
+      class_type: "KSampler",
+      inputs: {
+        seed: comfyUiSeed(),
+        steps: integerEnv("COMFYUI_STEPS", integerEnv("SD_IMAGE_STEPS", 18, 1, 80), 1, 80),
+        cfg: floatEnv("COMFYUI_CFG_SCALE", floatEnv("SD_IMAGE_CFG_SCALE", 6, 1, 20), 1, 20),
+        sampler_name: comfyUiSampler(),
+        scheduler: comfyUiScheduler(),
+        denoise: 1,
+        model: ["4", 0],
+        positive: ["6", 0],
+        negative: ["7", 0],
+        latent_image: ["5", 0]
+      }
+    },
+    "4": {
+      class_type: "CheckpointLoaderSimple",
+      inputs: {
+        ckpt_name: ckptName
+      }
+    },
+    "5": {
+      class_type: "EmptyLatentImage",
+      inputs: {
+        width: imageDimensionEnv("COMFYUI_IMAGE_WIDTH", "SD_IMAGE_WIDTH", 768),
+        height: imageDimensionEnv("COMFYUI_IMAGE_HEIGHT", "SD_IMAGE_HEIGHT", 576),
+        batch_size: 1
+      }
+    },
+    "6": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: stableDiffusionPrompt(context),
+        clip: ["4", 1]
+      }
+    },
+    "7": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: stableDiffusionNegativePrompt(),
+        clip: ["4", 1]
+      }
+    },
+    "8": {
+      class_type: "VAEDecode",
+      inputs: {
+        samples: ["3", 0],
+        vae: ["4", 2]
+      }
+    },
+    "9": {
+      class_type: "SaveImage",
+      inputs: {
+        filename_prefix: "daily_health_recipe",
+        images: ["8", 0]
+      }
+    }
+  };
+}
+
+async function queueComfyUiPrompt(context: RecipeImageContext) {
+  const ckptName = await getComfyUiCheckpoint();
+  if (!ckptName) {
+    console.warn("ComfyUI is unavailable or no checkpoint was found.");
+    return null;
+  }
+
+  const response = await fetch(`${getComfyUiUrl()}/prompt`, {
+    method: "POST",
+    headers: comfyUiHeaders(),
+    body: JSON.stringify({
+      client_id: `daily-health-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      prompt: comfyUiWorkflow(context, ckptName)
+    })
+  });
+  const payload = (await response.json().catch(() => null)) as { prompt_id?: unknown } | null;
+  if (!response.ok || typeof payload?.prompt_id !== "string") {
+    console.warn(`ComfyUI prompt queue failed: ${response.status}`);
+    return null;
+  }
+
+  return payload.prompt_id;
+}
+
+function comfyUiImageInfoFromRecord(value: unknown): ComfyUiImageInfo | null {
+  if (!isRecord(value) || typeof value.filename !== "string") return null;
+  return {
+    filename: value.filename,
+    subfolder: typeof value.subfolder === "string" ? value.subfolder : undefined,
+    type: typeof value.type === "string" ? value.type : undefined
+  };
+}
+
+function findComfyUiImages(value: unknown, depth = 0): ComfyUiImageInfo[] {
+  if (depth > 8) return [];
+
+  if (isRecord(value) && Array.isArray(value.images)) {
+    const images = value.images
+      .map(comfyUiImageInfoFromRecord)
+      .filter((image): image is ComfyUiImageInfo => Boolean(image));
+    if (images.length > 0) return images;
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => findComfyUiImages(item, depth + 1));
+  }
+
+  if (isRecord(value)) {
+    return Object.values(value).flatMap((child) => findComfyUiImages(child, depth + 1));
+  }
+
+  return [];
+}
+
+async function wait(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollComfyUiImage(promptId: string) {
+  const timeoutMs = integerEnv("COMFYUI_TIMEOUT_MS", 300_000, 10_000, 900_000);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await wait(1000);
+    const response = await fetch(`${getComfyUiUrl()}/history/${encodeURIComponent(promptId)}`, {
+      headers: comfyUiHeaders(false)
+    });
+    if (!response.ok) continue;
+
+    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    const historyItem = payload?.[promptId];
+    const image = findComfyUiImages(historyItem)[0];
+    if (image) return image;
+  }
+
+  console.warn("ComfyUI image generation timed out.");
+  return null;
+}
+
+async function fetchComfyUiImage(image: ComfyUiImageInfo) {
+  const params = new URLSearchParams({
+    filename: image.filename,
+    subfolder: image.subfolder ?? "",
+    type: image.type ?? "output"
+  });
+  const response = await fetch(`${getComfyUiUrl()}/view?${params}`, {
+    headers: comfyUiHeaders(false)
+  });
+  if (!response.ok) return null;
+
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim() ?? "image/png";
+  const bytes = await response.arrayBuffer();
+  return {
+    data: Buffer.from(bytes).toString("base64"),
+    mimeType: mimeType.startsWith("image/") ? mimeType : "image/png"
+  };
+}
+
+async function requestGeneratedImageFromComfyUi(context: RecipeImageContext) {
+  try {
+    const promptId = await queueComfyUiPrompt(context);
+    if (!promptId) return null;
+
+    const imageInfo = await pollComfyUiImage(promptId);
+    if (!imageInfo) return null;
+
+    return await fetchComfyUiImage(imageInfo);
+  } catch (error) {
+    console.warn("ComfyUI recipe image generation request failed", error);
+    return null;
+  }
+}
+
+async function generateRecipeImageWithComfyUi(context: RecipeImageContext) {
+  const cacheKey = recipeImageCacheKey(context, "local-comfyui");
+  if (generatedImageCache.has(cacheKey)) {
+    return generatedImageCache.get(cacheKey) ?? null;
+  }
+
+  const imageBlock = await requestGeneratedImageFromComfyUi(context);
+  if (!imageBlock) return null;
+
+  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
+  const image: RecipeImage = {
+    url: `data:${imageBlock.mimeType};base64,${imageBlock.data}`,
+    sourceTitle: `${title} ComfyUI generated reference`,
+    sourceUrl: getComfyUiUrl(),
+    provider: "local",
+    aiSelected: true,
+    aiReason: "Generated from the recipe context with local ComfyUI."
+  };
+  setGeneratedImageCache(cacheKey, image);
+  return image;
+}
+
+async function generateRecipeImageWithLocalProvider(context: RecipeImageContext) {
+  if (getLocalImageApi() === "sdwebui") return generateRecipeImageWithLocalSd(context);
+  return generateRecipeImageWithComfyUi(context);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function imageBlockFromRecord(value: unknown): GeminiImageBlock | null {
+  if (!isRecord(value)) return null;
+
+  const type = value.type;
+  const data = value.data;
+  const mimeType = value.mime_type ?? value.mimeType;
+  if (type !== "image" || typeof data !== "string") return null;
+
+  return {
+    data,
+    mimeType: typeof mimeType === "string" && mimeType.startsWith("image/") ? mimeType : "image/jpeg"
+  };
+}
+
+function findImageBlockDeep(value: unknown, depth = 0): GeminiImageBlock | null {
+  if (depth > 8) return null;
+
+  const imageBlock = imageBlockFromRecord(value);
+  if (imageBlock) return imageBlock;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findImageBlockDeep(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (isRecord(value)) {
+    for (const child of Object.values(value)) {
+      const found = findImageBlockDeep(child, depth + 1);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function findGeneratedImageBlock(payload: unknown): GeminiImageBlock | null {
+  if (!isRecord(payload)) return null;
+
+  const outputImage = imageBlockFromRecord(payload.output_image ?? payload.outputImage);
+  return outputImage ?? findImageBlockDeep(payload);
+}
+
+function geminiApiErrorText(payload: unknown) {
+  if (!isRecord(payload)) return "unknown error";
+  const error = payload.error;
+  if (!isRecord(error)) return "unknown error";
+  return typeof error.message === "string" ? error.message : "unknown error";
+}
+
+async function requestGeneratedImageFromGemini(model: string, prompt: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      model,
+      input: [{ type: "text", text: prompt }],
+      response_format: {
+        type: "image",
+        mime_type: "image/jpeg",
+        aspect_ratio: "4:3",
+        image_size: "512"
+      },
+      generation_config: {
+        temperature: 0.15
+      },
+      store: false
+    })
+  });
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    console.warn(`Gemini recipe image generation failed with ${model}: ${response.status} ${geminiApiErrorText(payload)}`);
+    return null;
+  }
+
+  return findGeneratedImageBlock(payload);
+}
+
+async function generateRecipeImageWithGemini(context: RecipeImageContext) {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  const cacheKey = recipeImageCacheKey(context, "gemini");
+  if (generatedImageCache.has(cacheKey)) {
+    return generatedImageCache.get(cacheKey) ?? null;
+  }
+
+  const prompt = generatedDishImagePrompt(context);
+  for (const model of getGeminiImageModelNames()) {
+    const imageBlock = await requestGeneratedImageFromGemini(model, prompt);
+    if (!imageBlock) continue;
+
+    const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
+    const image: RecipeImage = {
+      url: `data:${imageBlock.mimeType};base64,${imageBlock.data}`,
+      sourceTitle: `${title} AI generated reference`,
+      sourceUrl: "https://ai.google.dev/gemini-api/docs/image-generation",
+      provider: "ai",
+      aiSelected: true,
+      aiReason: `Generated from the recipe context with ${model}.`
+    };
+    setGeneratedImageCache(cacheKey, image);
+    return image;
+  }
+
+  return null;
+}
+
+async function generateRecipeImage(context: RecipeImageContext) {
+  if (getRecipeImageProvider() === "gemini") return generateRecipeImageWithGemini(context);
+  return generateRecipeImageWithLocalProvider(context);
 }
 
 function dedupeCandidates(candidates: RecipeImageCandidate[]) {
@@ -591,10 +1196,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = contextFromBody(await request.json());
-    const image = await resolveRecipeImage(context, true);
+    const image = await generateRecipeImage(context);
     return jsonOk({ image });
   } catch (error) {
-    console.warn("AI recipe image lookup failed", error);
+    console.warn("AI recipe image generation failed", error);
     return jsonOk({ image: null });
   }
 }
