@@ -16,6 +16,8 @@ type ResolvedRecipeImage = {
   sourceTitle: string;
   sourceUrl: string;
   provider: "themealdb" | "wikipedia" | "wikimedia";
+  aiSelected?: boolean;
+  aiReason?: string;
 };
 
 type RecipeImageResponse = {
@@ -46,31 +48,43 @@ function uniqueQueries(queries: Array<string | null | undefined>) {
   ).slice(0, 6);
 }
 
-function recipeImageQueries(recipe: RecipeView, locale: AppLocale) {
+function recipeImageInfo(recipe: RecipeView, locale: AppLocale) {
   const englishTitle = recipeTranslation(recipe, "en")?.title;
   const localizedTitle = recipeTranslation(recipe, locale)?.title;
   const ingredients = recipe.ingredients
     .slice(0, 3)
     .map((ingredient) => ingredientName(ingredient, "en"))
-    .join(" ");
+    .filter(Boolean);
 
-  return uniqueQueries([
+  const queries = uniqueQueries([
     recipe.referenceImageQuery,
     englishTitle,
     localizedTitle,
     recipe.referenceImageQuery ? `${recipe.referenceImageQuery} ${recipe.cuisineStyle}` : null,
-    englishTitle ? `${englishTitle} ${ingredients}` : null
+    englishTitle ? `${englishTitle} ${ingredients.join(" ")}` : null
   ]);
+
+  return {
+    title: englishTitle ?? localizedTitle ?? recipe.referenceImageQuery ?? recipe.cuisineStyle,
+    referenceImageQuery: recipe.referenceImageQuery,
+    cuisineStyle: recipe.cuisineStyle,
+    ingredients,
+    queries
+  };
 }
 
-async function fetchRecipeImage(queries: string[]) {
-  const params = new URLSearchParams();
-  for (const query of queries) {
-    params.append("q", query);
-  }
-
-  const response = await fetch(`/api/recipe-image?${params}`, {
-    headers: { accept: "application/json" }
+async function fetchRecipeImage(recipe: RecipeView, locale: AppLocale) {
+  const info = recipeImageInfo(recipe, locale);
+  const response = await fetch("/api/recipe-image", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      ...info,
+      locale
+    })
   });
   if (!response.ok) return null;
 
@@ -82,8 +96,8 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
   const { locale, t } = useApp();
   const translation = recipeTranslation(recipe, locale);
   const title = translation?.title ?? recipe.referenceImageQuery ?? recipe.cuisineStyle;
-  const queries = useMemo(() => recipeImageQueries(recipe, locale), [locale, recipe]);
-  const queryKey = queries.join("|");
+  const imageInfo = useMemo(() => recipeImageInfo(recipe, locale), [locale, recipe]);
+  const queryKey = JSON.stringify(imageInfo);
   const [status, setStatus] = useState<ImageStatus>("loading");
   const [image, setImage] = useState<ResolvedRecipeImage | null>(null);
 
@@ -92,14 +106,14 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
     setStatus("loading");
     setImage(null);
 
-    if (queries.length === 0) {
+    if (imageInfo.queries.length === 0) {
       setStatus("empty");
       return () => {
         isActive = false;
       };
     }
 
-    fetchRecipeImage(queries)
+    fetchRecipeImage(recipe, locale)
       .then((resolvedImage) => {
         if (!isActive) return;
         setImage(resolvedImage);
@@ -114,7 +128,7 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
     return () => {
       isActive = false;
     };
-  }, [queryKey, queries]);
+  }, [locale, queryKey, recipe, imageInfo.queries.length]);
 
   return (
     <div className={`relative overflow-hidden rounded-md bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-emerald-950 dark:via-slate-900 dark:to-amber-950 ${compact ? "aspect-[16/9]" : "aspect-[4/3]"}`}>
