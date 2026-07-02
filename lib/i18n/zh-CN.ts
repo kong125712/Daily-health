@@ -74,6 +74,8 @@ export const zhCN: Record<keyof typeof en, string> = {
   "smart.noFood": "未识别出清晰可见的食材。",
   "smart.confidence": "置信度",
   "smart.estimatedAmount": "估计份量",
+  "smart.estimatedCalories": "估计热量",
+  "smart.totalCalories": "估计总热量",
   "smart.normalizedName": "标准名称",
   "smart.displayNameEn": "英文名称",
   "smart.displayNameZh": "中文名称",

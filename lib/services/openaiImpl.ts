@@ -42,9 +42,10 @@ export async function recognizeIngredientsWithOpenAIImpl(input: {
     "Use normalized English singular ingredient names for normalizedName.",
     "Provide English and Simplified Chinese display names.",
     "Estimate visible amounts cautiously and avoid exact weight claims unless packaging or labels show them.",
+    "Estimate approximate calories in kcal for the visible estimatedAmount. Use null for estimatedCalories if calories cannot be reasonably estimated.",
     "Avoid medical advice. Mention uncertainty honestly.",
     "Return valid JSON only with this shape:",
-    "{ overallConfidence: 'high' | 'medium' | 'low', uncertaintyNoteEn: string, uncertaintyNoteZh: string, ingredients: [{ normalizedName, displayNameEn, displayNameZh, estimatedAmount, confidence, notes }] }",
+    "{ overallConfidence: 'high' | 'medium' | 'low', uncertaintyNoteEn: string, uncertaintyNoteZh: string, ingredients: [{ normalizedName, displayNameEn, displayNameZh, estimatedAmount, estimatedCalories: number | null, confidence, notes }] }",
     `Prefer ${input.locale === "zh-CN" ? "Simplified Chinese" : "English"} phrasing where notes are language-specific.`
   ].join("\n");
 
@@ -94,7 +95,10 @@ export async function generateRecipesWithOpenAIImpl(input: {
   }
 
   const ingredientText = input.ingredients
-    .map((ingredient) => `${ingredient.displayNameEn} (${ingredient.normalizedName}) - ${ingredient.estimatedAmount}`)
+    .map((ingredient) => {
+      const calories = ingredient.estimatedCalories == null ? "calories unknown" : `about ${ingredient.estimatedCalories} kcal`;
+      return `${ingredient.displayNameEn} (${ingredient.normalizedName}) - ${ingredient.estimatedAmount} - ${calories}`;
+    })
     .join("\n");
   const pairingText = input.pairings.length
     ? input.pairings

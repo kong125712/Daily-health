@@ -72,6 +72,8 @@ export const en = {
   "smart.noFood": "No visible ingredients were identified.",
   "smart.confidence": "Confidence",
   "smart.estimatedAmount": "Estimated amount",
+  "smart.estimatedCalories": "Estimated calories",
+  "smart.totalCalories": "Estimated total calories",
   "smart.normalizedName": "Normalized name",
   "smart.displayNameEn": "English name",
   "smart.displayNameZh": "Chinese name",

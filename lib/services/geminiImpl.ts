@@ -16,6 +16,10 @@ function getGeminiClient() {
   return new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 }
 
+function getGeminiModelName() {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-flash-lite-latest";
+}
+
 function parseJsonFromText(text: string): unknown {
   const trimmed = text.trim();
   const withoutFence = trimmed
@@ -37,7 +41,13 @@ export async function recognizeIngredientsWithGeminiImpl(input: {
   const mimeType = matches[1];
   const base64Data = matches[2];
 
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  const model = genAI.getGenerativeModel({
+    model: getGeminiModelName(),
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.2
+    }
+  });
 
   const prompt = [
     "Analyze the image for visible food, ingredients, beverages, and obvious seasonings only.",
@@ -45,9 +55,10 @@ export async function recognizeIngredientsWithGeminiImpl(input: {
     "Use normalized English singular ingredient names for normalizedName.",
     "Provide English and Simplified Chinese display names.",
     "Estimate visible amounts cautiously and avoid exact weight claims unless packaging or labels show them.",
+    "Estimate approximate calories in kcal for the visible estimatedAmount. Use null for estimatedCalories if calories cannot be reasonably estimated.",
     "Avoid medical advice. Mention uncertainty honestly.",
     "Return valid JSON only with this shape:",
-    `{ "overallConfidence": "high" | "medium" | "low", "uncertaintyNoteEn": "string", "uncertaintyNoteZh": "string", "ingredients": [{ "normalizedName": "...", "displayNameEn": "...", "displayNameZh": "...", "estimatedAmount": "...", "confidence": "high|medium|low", "notes": "..." }] }`,
+    `{ "overallConfidence": "high" | "medium" | "low", "uncertaintyNoteEn": "string", "uncertaintyNoteZh": "string", "ingredients": [{ "normalizedName": "...", "displayNameEn": "...", "displayNameZh": "...", "estimatedAmount": "...", "estimatedCalories": 120, "confidence": "high|medium|low", "notes": "..." }] }`,
     `Prefer ${input.locale === "zh-CN" ? "Simplified Chinese" : "English"} phrasing where notes are language-specific.`,
   ].join("\n");
 
@@ -75,10 +86,19 @@ export async function generateRecipesWithGeminiImpl(input: {
   const genAI = getGeminiClient();
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  const model = genAI.getGenerativeModel({
+    model: getGeminiModelName(),
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.2
+    }
+  });
 
   const ingredientText = input.ingredients
-    .map(i => `${i.displayNameEn} (${i.normalizedName}) - ${i.estimatedAmount}`)
+    .map(i => {
+      const calories = i.estimatedCalories == null ? "calories unknown" : `about ${i.estimatedCalories} kcal`;
+      return `${i.displayNameEn} (${i.normalizedName}) - ${i.estimatedAmount} - ${calories}`;
+    })
     .join("\n");
   const pairingText = input.pairings.length
     ? input.pairings

@@ -38,6 +38,7 @@ export async function createIngredientScan(input: {
             displayNameEn: ingredient.displayNameEn,
             displayNameZh: ingredient.displayNameZh,
             estimatedAmount: ingredient.estimatedAmount,
+            estimatedCalories: ingredient.estimatedCalories ?? null,
             confidence: ingredient.confidence,
             notes: ingredient.notes,
             position: index
@@ -113,6 +114,7 @@ export async function updateRecognizedIngredients(input: {
         displayNameEn: ingredient.displayNameEn,
         displayNameZh: ingredient.displayNameZh,
         estimatedAmount: ingredient.estimatedAmount,
+        estimatedCalories: ingredient.estimatedCalories ?? null,
         confidence: ingredient.confidence,
         notes: ingredient.notes,
         position: index

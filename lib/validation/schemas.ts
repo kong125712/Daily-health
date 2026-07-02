@@ -25,6 +25,7 @@ export const recognizedIngredientSchema = z.object({
   displayNameEn: z.string().trim().min(1).max(120),
   displayNameZh: z.string().trim().min(1).max(120),
   estimatedAmount: z.string().trim().min(1).max(120),
+  estimatedCalories: z.number().int().min(0).max(5000).nullable().optional(),
   confidence: confidenceSchema,
   notes: z.string().trim().max(300).default("")
 });
@@ -111,7 +112,8 @@ export const generateRecipesRequestSchema = z.object({
     normalizedName: true,
     displayNameEn: true,
     displayNameZh: true,
-    estimatedAmount: true
+    estimatedAmount: true,
+    estimatedCalories: true
   }).extend({
     confidence: confidenceSchema.default("medium"),
     notes: z.string().trim().max(300).default("")

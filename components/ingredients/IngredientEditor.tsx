@@ -14,6 +14,7 @@ const emptyIngredient: RecognizedIngredientInput = {
   displayNameEn: "",
   displayNameZh: "",
   estimatedAmount: "",
+  estimatedCalories: null,
   confidence: "medium",
   notes: ""
 };
@@ -68,6 +69,19 @@ export function IngredientEditor({ ingredients, onChange }: IngredientEditorProp
                   className="field-input"
                   value={ingredient.estimatedAmount}
                   onChange={(event) => update(index, { estimatedAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="field-label">{t("smart.estimatedCalories")}</span>
+                <input
+                  className="field-input"
+                  min="0"
+                  type="number"
+                  value={ingredient.estimatedCalories ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    update(index, { estimatedCalories: value ? Number(value) : null });
+                  }}
                 />
               </label>
               <label className="grid gap-1">

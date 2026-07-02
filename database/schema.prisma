@@ -60,6 +60,7 @@ model RecognizedIngredient {
   displayNameEn   String
   displayNameZh   String
   estimatedAmount String
+  estimatedCalories Int?
   confidence      String
   notes           String
   position        Int

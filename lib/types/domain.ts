@@ -17,6 +17,7 @@ export type RecognizedIngredientInput = {
   displayNameEn: string;
   displayNameZh: string;
   estimatedAmount: string;
+  estimatedCalories?: number | null;
   confidence: IngredientConfidence;
   notes: string;
 };

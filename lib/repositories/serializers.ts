@@ -87,6 +87,7 @@ export function serializeScan(scan: ScanRecord): IngredientScanView {
       displayNameEn: ingredient.displayNameEn,
       displayNameZh: ingredient.displayNameZh,
       estimatedAmount: ingredient.estimatedAmount,
+      estimatedCalories: ingredient.estimatedCalories,
       confidence: asConfidence(ingredient.confidence),
       notes: ingredient.notes,
       position: ingredient.position
