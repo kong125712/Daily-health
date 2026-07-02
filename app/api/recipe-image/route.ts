@@ -24,6 +24,8 @@ type RecipeImageContext = {
   cuisineStyle?: string | null;
   ingredients?: string[];
   queries?: string[];
+  excludeUrls?: string[];
+  excludeSourceTitles?: string[];
   locale?: string;
 };
 
@@ -316,6 +318,22 @@ function dedupeCandidates(candidates: RecipeImageCandidate[]) {
     .sort((left, right) => right.score - left.score);
 }
 
+function excludedSet(values: string[] | undefined) {
+  return new Set((values ?? []).map(normalizeText).filter(Boolean));
+}
+
+function filterExcludedCandidates(candidates: RecipeImageCandidate[], context: RecipeImageContext) {
+  const excludedUrls = excludedSet(context.excludeUrls);
+  const excludedTitles = excludedSet(context.excludeSourceTitles);
+  if (excludedUrls.size === 0 && excludedTitles.size === 0) return candidates;
+
+  return candidates.filter((candidate) => {
+    const normalizedUrl = normalizeText(candidate.url);
+    const normalizedTitle = normalizeText(candidate.sourceTitle);
+    return !excludedUrls.has(normalizedUrl) && !excludedTitles.has(normalizedTitle);
+  });
+}
+
 async function collectImageCandidates(queries: string[]) {
   const mealDbCandidates = (await Promise.all(queries.map((query) => findMealDbImages(query)))).flat();
   let candidates = dedupeCandidates(mealDbCandidates);
@@ -467,7 +485,7 @@ async function generateImageSearchQueriesWithGemini(
 
 async function resolveRecipeImage(context: RecipeImageContext, useAi: boolean) {
   const queries = recipeContextQueries(context);
-  const candidates = await collectImageCandidates(queries);
+  const candidates = filterExcludedCandidates(await collectImageCandidates(queries), context);
   if (candidates.length === 0 && !useAi) return null;
 
   if (useAi) {
@@ -480,10 +498,10 @@ async function resolveRecipeImage(context: RecipeImageContext, useAi: boolean) {
       const refinedQueries = await generateImageSearchQueriesWithGemini(context, candidates);
       const newQueries = refinedQueries.filter((query) => !queries.includes(query));
       if (newQueries.length > 0) {
-        const refinedCandidates = dedupeCandidates([
+        const refinedCandidates = filterExcludedCandidates(dedupeCandidates([
           ...candidates,
           ...(await collectImageCandidates(newQueries))
-        ]);
+        ]), context);
         const refinedAiImage = await selectImageWithGemini(context, refinedCandidates);
         if (refinedAiImage) return refinedAiImage;
       }
@@ -516,6 +534,8 @@ function contextFromBody(body: unknown): RecipeImageContext {
     cuisineStyle: typeof record.cuisineStyle === "string" ? record.cuisineStyle : null,
     ingredients: Array.isArray(record.ingredients) ? record.ingredients.filter((ingredient): ingredient is string => typeof ingredient === "string") : [],
     queries: Array.isArray(record.queries) ? record.queries.filter((query): query is string => typeof query === "string") : [],
+    excludeUrls: Array.isArray(record.excludeUrls) ? record.excludeUrls.filter((url): url is string => typeof url === "string") : [],
+    excludeSourceTitles: Array.isArray(record.excludeSourceTitles) ? record.excludeSourceTitles.filter((title): title is string => typeof title === "string") : [],
     locale: typeof record.locale === "string" ? record.locale : undefined
   };
 }

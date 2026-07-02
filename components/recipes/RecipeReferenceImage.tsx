@@ -1,7 +1,7 @@
 "use client";
 
 import { ImageOff, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ingredientName, recipeTranslation } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import type { AppLocale, RecipeView } from "@/lib/types/domain";
@@ -25,6 +25,47 @@ type RecipeImageResponse = {
 };
 
 type ImageStatus = "loading" | "ready" | "empty";
+
+type ClaimedImage = {
+  url: string;
+  sourceTitle: string;
+};
+
+const claimedImages = new Map<string, ClaimedImage>();
+
+function claimedUrlsForOtherRecipes(recipeId: string) {
+  return Array.from(claimedImages.entries())
+    .filter(([claimedRecipeId]) => claimedRecipeId !== recipeId)
+    .map(([, image]) => image.url);
+}
+
+function claimedSourceTitlesForOtherRecipes(recipeId: string) {
+  return Array.from(claimedImages.entries())
+    .filter(([claimedRecipeId]) => claimedRecipeId !== recipeId)
+    .map(([, image]) => image.sourceTitle);
+}
+
+function claimImage(recipeId: string, image: ResolvedRecipeImage) {
+  const duplicateOwner = Array.from(claimedImages.entries())
+    .find(([claimedRecipeId, claimedImage]) =>
+      claimedRecipeId !== recipeId &&
+      (claimedImage.url === image.url || claimedImage.sourceTitle === image.sourceTitle)
+    );
+  if (duplicateOwner) return false;
+
+  claimedImages.set(recipeId, {
+    url: image.url,
+    sourceTitle: image.sourceTitle
+  });
+  return true;
+}
+
+function releaseImage(recipeId: string, image?: ClaimedImage | null) {
+  const claimedImage = claimedImages.get(recipeId);
+  if (!image || claimedImage?.url === image.url) {
+    claimedImages.delete(recipeId);
+  }
+}
 
 function cleanSearchText(text: string) {
   return text
@@ -73,7 +114,12 @@ function recipeImageInfo(recipe: RecipeView, locale: AppLocale) {
   };
 }
 
-async function fetchRecipeImage(recipe: RecipeView, locale: AppLocale) {
+async function fetchRecipeImage(
+  recipe: RecipeView,
+  locale: AppLocale,
+  excludeUrls: string[] = [],
+  excludeSourceTitles: string[] = []
+) {
   const info = recipeImageInfo(recipe, locale);
   const response = await fetch("/api/recipe-image", {
     method: "POST",
@@ -83,6 +129,8 @@ async function fetchRecipeImage(recipe: RecipeView, locale: AppLocale) {
     },
     body: JSON.stringify({
       ...info,
+      excludeUrls,
+      excludeSourceTitles,
       locale
     })
   });
@@ -100,9 +148,12 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
   const queryKey = JSON.stringify(imageInfo);
   const [status, setStatus] = useState<ImageStatus>("loading");
   const [image, setImage] = useState<ResolvedRecipeImage | null>(null);
+  const claimedImageRef = useRef<ClaimedImage | null>(null);
 
   useEffect(() => {
     let isActive = true;
+    releaseImage(recipe.id, claimedImageRef.current);
+    claimedImageRef.current = null;
     setStatus("loading");
     setImage(null);
 
@@ -113,12 +164,48 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
       };
     }
 
-    fetchRecipeImage(recipe, locale)
-      .then((resolvedImage) => {
-        if (!isActive) return;
+    async function loadImage() {
+      const initialExcludeUrls = claimedUrlsForOtherRecipes(recipe.id);
+      const initialExcludeSourceTitles = claimedSourceTitlesForOtherRecipes(recipe.id);
+      const resolvedImage = await fetchRecipeImage(recipe, locale, initialExcludeUrls, initialExcludeSourceTitles);
+      if (!isActive) return;
+
+      if (!resolvedImage) {
+        setImage(null);
+        setStatus("empty");
+        return;
+      }
+
+      if (claimImage(recipe.id, resolvedImage)) {
+        claimedImageRef.current = {
+          url: resolvedImage.url,
+          sourceTitle: resolvedImage.sourceTitle
+        };
         setImage(resolvedImage);
-        setStatus(resolvedImage ? "ready" : "empty");
-      })
+        setStatus("ready");
+        return;
+      }
+
+      const retryExcludeUrls = Array.from(new Set([...initialExcludeUrls, resolvedImage.url]));
+      const retryExcludeSourceTitles = Array.from(new Set([...initialExcludeSourceTitles, resolvedImage.sourceTitle]));
+      const retryImage = await fetchRecipeImage(recipe, locale, retryExcludeUrls, retryExcludeSourceTitles);
+      if (!isActive) return;
+
+      if (retryImage && claimImage(recipe.id, retryImage)) {
+        claimedImageRef.current = {
+          url: retryImage.url,
+          sourceTitle: retryImage.sourceTitle
+        };
+        setImage(retryImage);
+        setStatus("ready");
+        return;
+      }
+
+      setImage(null);
+      setStatus("empty");
+    }
+
+    void loadImage()
       .catch(() => {
         if (!isActive) return;
         setImage(null);
@@ -127,6 +214,8 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
 
     return () => {
       isActive = false;
+      releaseImage(recipe.id, claimedImageRef.current);
+      claimedImageRef.current = null;
     };
   }, [locale, queryKey, recipe, imageInfo.queries.length]);
 
@@ -140,6 +229,8 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
           referrerPolicy="no-referrer"
           src={image.url}
           onError={() => {
+            releaseImage(recipe.id, claimedImageRef.current);
+            claimedImageRef.current = null;
             setImage(null);
             setStatus("empty");
           }}
