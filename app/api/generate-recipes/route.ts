@@ -4,6 +4,7 @@ import { createRecipes, getRecipe } from "@/lib/repositories/recipeRepository";
 import { jsonMessageError, handleRouteError, jsonError, jsonOk, localeFromRequest, parseJson } from "@/lib/server/http";
 import { getEpicurePairings } from "@/lib/services/epicureService";
 import { generateRecipesWithOpenAI } from "@/lib/services/openaiService";
+import { applyRecipeCalorieEstimates } from "@/lib/services/recipeCalories";
 import type { RecognizedIngredientInput } from "@/lib/types/domain";
 import { generateRecipesRequestSchema } from "@/lib/validation/schemas";
 
@@ -66,10 +67,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const recipesWithCalories = await applyRecipeCalorieEstimates({
+      recipes: generated.recipes,
+      sourceIngredients: ingredients,
+      pairings: epicure.pairings
+    });
+
     const recipes = await createRecipes({
       profileId: body.profileId,
       sourceScanId,
-      recipes: generated.recipes
+      recipes: recipesWithCalories
     });
 
     return jsonOk({

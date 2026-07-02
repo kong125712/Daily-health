@@ -95,10 +95,7 @@ export async function generateRecipesWithOpenAIImpl(input: {
   }
 
   const ingredientText = input.ingredients
-    .map((ingredient) => {
-      const calories = ingredient.estimatedCalories == null ? "calories unknown" : `about ${ingredient.estimatedCalories} kcal`;
-      return `${ingredient.displayNameEn} (${ingredient.normalizedName}) - ${ingredient.estimatedAmount} - ${calories}`;
-    })
+    .map((ingredient) => `${ingredient.displayNameEn} (${ingredient.normalizedName}) - ${ingredient.estimatedAmount}`)
     .join("\n");
   const pairingText = input.pairings.length
     ? input.pairings
@@ -116,6 +113,7 @@ export async function generateRecipesWithOpenAIImpl(input: {
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
     "Use structured JSON only with a top-level recipes array of exactly 3 items.",
+    "Do not calculate recipe calories yourself. Set estimatedCaloriesPerServing to 0; the server will calculate calories after generation from the final ingredient amounts and seasonings.",
     "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use the most common English dish name when possible, such as tomato egg stir fry or chicken curry. Do not use broad labels such as egg breakfast, protein meal, or healthy bowl. Use concrete dish/ingredient words, no brands and no punctuation.",
     "",
     "Visible or user-confirmed ingredients:",

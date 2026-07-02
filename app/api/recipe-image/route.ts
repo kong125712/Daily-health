@@ -9,6 +9,11 @@ type RecipeImage = {
   sourceTitle: string;
   sourceUrl: string;
   provider: RecipeImageProvider;
+  crop?: {
+    xPercent: number;
+    yPercent: number;
+    zoom: number;
+  };
   aiSelected?: boolean;
   aiReason?: string;
 };
@@ -33,6 +38,11 @@ type AiSelectionResult = {
   selectedIndex: number | null;
   confidence?: "high" | "medium" | "low";
   reason?: string;
+  crop?: {
+    xPercent?: number;
+    yPercent?: number;
+    zoom?: number;
+  };
 };
 
 type AiQueryResult = {
@@ -347,12 +357,30 @@ async function collectImageCandidates(queries: string[]) {
   return dedupeCandidates([...candidates, ...wikimediaCandidates]).slice(0, 8);
 }
 
-function toRecipeImage(candidate: RecipeImageCandidate, aiReason?: string): RecipeImage {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizedCrop(crop: AiSelectionResult["crop"]) {
+  if (!crop) return undefined;
+  return {
+    xPercent: clamp(typeof crop.xPercent === "number" ? crop.xPercent : 50, 0, 100),
+    yPercent: clamp(typeof crop.yPercent === "number" ? crop.yPercent : 50, 0, 100),
+    zoom: clamp(typeof crop.zoom === "number" ? crop.zoom : 1, 1, 2.8)
+  };
+}
+
+function toRecipeImage(
+  candidate: RecipeImageCandidate,
+  aiReason?: string,
+  crop?: AiSelectionResult["crop"]
+): RecipeImage {
   return {
     url: candidate.url,
     sourceTitle: candidate.sourceTitle,
     sourceUrl: candidate.sourceUrl,
     provider: candidate.provider,
+    crop: normalizedCrop(crop),
     aiSelected: Boolean(aiReason),
     aiReason
   };
@@ -418,8 +446,9 @@ async function selectImageWithGemini(context: RecipeImageContext, candidates: Re
   const prompt = [
     "Select the best reference image for a generated recipe.",
     "First infer what the finished dish should look like from the recipe context.",
-    "Then inspect the candidate images and choose only a candidate that visually matches the finished dish.",
-    "Reject images that show a different dish, raw ingredients, packaging, people, menus, logos, or a vague food scene.",
+    "Then inspect the candidate images and choose only a candidate that visually matches the finished dish and can be displayed as exactly one finished dish.",
+    "Reject images that show a different dish, raw ingredients, packaging, people, menus, logos, a vague food scene, or multiple finished dishes that cannot be tightly cropped to a single dish.",
+    "If the image contains surrounding tableware or multiple nearby items, provide crop values that center and zoom the single finished dish only.",
     "If none of the images are a good match, return selectedIndex null.",
     "",
     "Recipe context:",
@@ -429,7 +458,12 @@ async function selectImageWithGemini(context: RecipeImageContext, candidates: Re
     `Main ingredients: ${(context.ingredients ?? []).join(", ")}`,
     "",
     "Return JSON only with this exact shape:",
-    JSON.stringify({ selectedIndex: 1, confidence: "high | medium | low", reason: "short reason" })
+    JSON.stringify({
+      selectedIndex: 1,
+      confidence: "high | medium | low",
+      reason: "short reason",
+      crop: { xPercent: 50, yPercent: 50, zoom: 1.2 }
+    })
   ].join("\n");
 
   const result = await model.generateContent([{ text: prompt }, ...candidateParts]);
@@ -439,7 +473,11 @@ async function selectImageWithGemini(context: RecipeImageContext, candidates: Re
   if (parsed.confidence === "low") return null;
 
   const selected = visibleCandidates[selectedIndex - 1];
-  return toRecipeImage(selected, parsed.reason ?? "AI selected the closest matching finished dish image.");
+  return toRecipeImage(
+    selected,
+    parsed.reason ?? "AI selected the closest matching finished dish image.",
+    parsed.crop
+  );
 }
 
 async function generateImageSearchQueriesWithGemini(

@@ -38,9 +38,11 @@ SQLite is used because this app has no login system and is designed to run local
 
 ## AI and Epicure
 
-OpenAI image analysis recognizes visible ingredients and food. OpenAI text generation creates structured bilingual recipes from ingredients, pairing suggestions, and user preferences.
+OpenAI or Gemini image analysis recognizes visible ingredients and food. Recipe generation creates structured bilingual recipes from ingredients, pairing suggestions, and user preferences.
 
-Epicure / FlavorGraph pairing is optional. Set `EPICURE_MCP_URL` to connect a server-side MCP endpoint. If it is missing or unavailable, recipe generation still works and the app shows a non-blocking fallback message.
+Epicure / FlavorGraph pairing uses `EPICURE_MCP_URL`, which defaults to `https://epicure-mcp.kaikaku.ai/mcp`. If Epicure is unavailable, recipe generation still works and the app shows a non-blocking fallback message.
+
+Recipe calories are not trusted from the text-generation model. After recipes are generated, the server tries Epicure nutrition/calorie tools first, then falls back to a deterministic ingredient-amount calculation so the displayed per-serving calories come from structured data and math rather than free-form AI guesses.
 
 ## Installation
 
@@ -62,7 +64,7 @@ DATABASE_URL="file:./daily-health.db"
 AI_PROVIDER=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
-EPICURE_MCP_URL=
+EPICURE_MCP_URL=https://epicure-mcp.kaikaku.ai/mcp
 ```
 
 `DATABASE_URL="file:./daily-health.db"` creates `database/daily-health.db` because the Prisma schema is inside the `database` folder.
@@ -71,7 +73,7 @@ Set `AI_PROVIDER` as `openai` OR `gemini` to select the ai provider.
 
 Set `OPENAI_API_KEY` OR `GEMINI_API_KEY` to enable Smart Scan and recipe generation. Without it, the app shows a friendly setup message instead of exposing technical details.
 
-Set `EPICURE_MCP_URL` only if you have an Epicure MCP service. It is optional.
+`EPICURE_MCP_URL` defaults to the hosted Epicure MCP endpoint above. Override it only if you want to use another Epicure MCP service.
 
 ## Commands
 

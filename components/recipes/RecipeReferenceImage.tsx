@@ -16,6 +16,11 @@ type ResolvedRecipeImage = {
   sourceTitle: string;
   sourceUrl: string;
   provider: "themealdb" | "wikipedia" | "wikimedia";
+  crop?: {
+    xPercent: number;
+    yPercent: number;
+    zoom: number;
+  };
   aiSelected?: boolean;
   aiReason?: string;
 };
@@ -228,6 +233,11 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
           loading="lazy"
           referrerPolicy="no-referrer"
           src={image.url}
+          style={{
+            objectPosition: image.crop ? `${image.crop.xPercent}% ${image.crop.yPercent}%` : undefined,
+            transform: image.crop ? `scale(${image.crop.zoom})` : undefined,
+            transformOrigin: image.crop ? `${image.crop.xPercent}% ${image.crop.yPercent}%` : undefined
+          }}
           onError={() => {
             releaseImage(recipe.id, claimedImageRef.current);
             claimedImageRef.current = null;

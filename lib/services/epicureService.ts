@@ -9,6 +9,12 @@ type EpicureResult = {
 
 type JsonObject = Record<string, unknown>;
 
+export const DEFAULT_EPICURE_MCP_URL = "https://epicure-mcp.kaikaku.ai/mcp";
+
+export function getEpicureMcpUrl() {
+  return process.env.EPICURE_MCP_URL?.trim() || DEFAULT_EPICURE_MCP_URL;
+}
+
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -194,11 +200,58 @@ async function callMcpTool(
   return parseMcpResponse(response);
 }
 
+function collectToolObjects(value: unknown): JsonObject[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectToolObjects);
+  }
+  if (!isObject(value)) {
+    return [];
+  }
+  if (asString(value.name)) {
+    return [value];
+  }
+  return Object.values(value).flatMap(collectToolObjects);
+}
+
+export async function listEpicureTools(): Promise<Array<{ name: string; description?: string }>> {
+  const baseUrl = getEpicureMcpUrl();
+  try {
+    const sessionId = await getSessionId(baseUrl);
+    const { response } = await mcpRequest(
+      baseUrl,
+      {
+        jsonrpc: "2.0",
+        id: crypto.randomUUID(),
+        method: "tools/list"
+      },
+      sessionId
+    );
+
+    if (!response.ok) {
+      throw new Error(`Epicure MCP tools/list returned ${response.status}`);
+    }
+
+    return collectToolObjects(await parseMcpResponse(response))
+      .map((tool) => ({
+        name: asString(tool.name) ?? "",
+        description: asString(tool.description)
+      }))
+      .filter((tool) => tool.name);
+  } catch (error) {
+    console.warn("Epicure MCP tools/list failed", error);
+    return [];
+  }
+}
+
+export async function callEpicureTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+  return callMcpTool(getEpicureMcpUrl(), toolName, args);
+}
+
 export async function getEpicurePairings(input: {
   ingredients: RecognizedIngredientInput[];
   preferences: RecipePreferenceInput;
 }): Promise<EpicureResult> {
-  const baseUrl = process.env.EPICURE_MCP_URL?.trim();
+  const baseUrl = getEpicureMcpUrl();
   if (!baseUrl) {
     return { status: "missing", pairings: [] };
   }
