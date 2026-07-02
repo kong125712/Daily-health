@@ -97,9 +97,21 @@ function uniqueQueries(queries: Array<string | null | undefined>) {
 function recipeImageInfo(recipe: RecipeView, locale: AppLocale) {
   const englishTitle = recipeTranslation(recipe, "en")?.title;
   const localizedTitle = recipeTranslation(recipe, locale)?.title;
+  const englishDescription = recipeTranslation(recipe, "en")?.shortDescription;
+  const localizedDescription = recipeTranslation(recipe, locale)?.shortDescription;
   const ingredients = recipe.ingredients
-    .slice(0, 3)
     .map((ingredient) => ingredientName(ingredient, "en"))
+    .map((name, index) => {
+      const amount = recipe.ingredients[index]?.amount;
+      return amount ? `${name} (${amount})` : name;
+    })
+    .filter(Boolean);
+  const steps = [...recipe.steps]
+    .sort((left, right) => left.stepNumber - right.stepNumber)
+    .map((step) => step.instructionEn || step.instructionZh)
+    .filter(Boolean);
+  const tips = recipe.tips
+    .map((tip) => tip.contentEn || tip.contentZh)
     .filter(Boolean);
 
   const queries = uniqueQueries([
@@ -107,14 +119,18 @@ function recipeImageInfo(recipe: RecipeView, locale: AppLocale) {
     englishTitle,
     localizedTitle,
     recipe.referenceImageQuery ? `${recipe.referenceImageQuery} ${recipe.cuisineStyle}` : null,
-    englishTitle ? `${englishTitle} ${ingredients.join(" ")}` : null
+    englishTitle ? `${englishTitle} ${ingredients.slice(0, 5).join(" ")}` : null
   ]);
 
   return {
     title: englishTitle ?? localizedTitle ?? recipe.referenceImageQuery ?? recipe.cuisineStyle,
+    localizedTitle,
+    shortDescription: englishDescription ?? localizedDescription,
     referenceImageQuery: recipe.referenceImageQuery,
     cuisineStyle: recipe.cuisineStyle,
     ingredients,
+    steps,
+    tips,
     queries
   };
 }

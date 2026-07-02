@@ -25,9 +25,13 @@ type RecipeImageCandidate = RecipeImage & {
 
 type RecipeImageContext = {
   title?: string;
+  localizedTitle?: string | null;
+  shortDescription?: string | null;
   referenceImageQuery?: string | null;
   cuisineStyle?: string | null;
   ingredients?: string[];
+  steps?: string[];
+  tips?: string[];
   queries?: string[];
   excludeUrls?: string[];
   excludeSourceTitles?: string[];
@@ -47,6 +51,12 @@ type AiSelectionResult = {
 
 type AiQueryResult = {
   queries?: string[];
+  reason?: string;
+};
+
+type LocalImagePromptPlan = {
+  prompt: string;
+  negativePrompt: string;
   reason?: string;
 };
 
@@ -129,6 +139,7 @@ const stopWords = new Set([
 
 const generatedImageCache = new Map<string, RecipeImage>();
 const maxGeneratedImageCacheItems = 24;
+let localImageGenerationQueue = Promise.resolve();
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -374,9 +385,13 @@ function recipeContextQueries(context: RecipeImageContext) {
 function recipeImageCacheKey(context: RecipeImageContext, provider: string) {
   return `${provider}:${normalizeText([
     context.title,
+    context.localizedTitle,
+    context.shortDescription,
     context.referenceImageQuery,
     context.cuisineStyle,
     ...(context.ingredients ?? []),
+    ...(context.steps ?? []),
+    ...(context.tips ?? []),
     ...(context.queries ?? [])
   ].filter(Boolean).join("|")).slice(0, 700)}`;
 }
@@ -412,29 +427,123 @@ function generatedDishImagePrompt(context: RecipeImageContext) {
   ].join("\n");
 }
 
-function stableDiffusionPrompt(context: RecipeImageContext) {
-  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "healthy home-cooked dish";
-  const ingredients = (context.ingredients ?? []).slice(0, 8).join(", ");
-  const cuisine = context.cuisineStyle ? `${context.cuisineStyle} cuisine` : "";
+function safePromptText(value: string | null | undefined, maxLength = 400) {
+  return (value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
 
+function recipeVisualContext(context: RecipeImageContext) {
   return [
-    "professional realistic food photography",
-    "exactly one finished cooked dish",
-    "single plate or single bowl",
-    "tight centered crop",
-    "whole dish visible",
-    "natural light",
-    "appetizing realistic plating",
-    "simple neutral background",
-    `dish name: ${title}`,
-    cuisine,
-    ingredients ? `main ingredients: ${ingredients}` : ""
-  ].filter(Boolean).join(", ");
+    `English title: ${safePromptText(context.title)}`,
+    `Localized title: ${safePromptText(context.localizedTitle)}`,
+    `Reference dish query: ${safePromptText(context.referenceImageQuery)}`,
+    `Cuisine style: ${safePromptText(context.cuisineStyle)}`,
+    `Short description: ${safePromptText(context.shortDescription, 700)}`,
+    `Ingredients with amounts: ${(context.ingredients ?? []).slice(0, 12).map((ingredient) => safePromptText(ingredient, 120)).join("; ")}`,
+    `Cooking steps: ${(context.steps ?? []).slice(0, 6).map((step) => safePromptText(step, 220)).join(" | ")}`,
+    `Tips: ${(context.tips ?? []).slice(0, 3).map((tip) => safePromptText(tip, 180)).join(" | ")}`
+  ].join("\n");
+}
+
+function fallbackLocalImagePromptPlan(context: RecipeImageContext): LocalImagePromptPlan {
+  const title = safePromptText(context.title) || safePromptText(context.referenceImageQuery) || "healthy home-cooked dish";
+  const localizedTitle = safePromptText(context.localizedTitle);
+  const description = safePromptText(context.shortDescription, 220);
+  const ingredients = (context.ingredients ?? []).slice(0, 10).map((ingredient) => safePromptText(ingredient, 80)).filter(Boolean);
+  const steps = (context.steps ?? []).slice(0, 4).map((step) => safePromptText(step, 120)).filter(Boolean);
+  const cuisine = safePromptText(context.cuisineStyle);
+
+  return {
+    prompt: [
+      "professional realistic restaurant menu food photography",
+      "one finished cooked dish only",
+      "entire plate or bowl fully visible inside the frame",
+      "medium distance composition",
+      "45 degree angle or gentle overhead view",
+      "centered dish with small clean margin around the plate",
+      "no cropped edges",
+      "natural soft light",
+      "simple neutral tabletop",
+      "realistic home cooked plating",
+      `dish name: ${title}`,
+      localizedTitle ? `also known as: ${localizedTitle}` : "",
+      cuisine ? `${cuisine} cuisine` : "",
+      description ? `finished dish description: ${description}` : "",
+      ingredients.length > 0 ? `visible cooked ingredients: ${ingredients.join(", ")}` : "",
+      steps.length > 0 ? `cooking method cues: ${steps.join("; ")}` : ""
+    ].filter(Boolean).join(", "),
+    negativePrompt: stableDiffusionNegativePrompt()
+  };
+}
+
+function parsePromptPlan(text: string): LocalImagePromptPlan | null {
+  const parsed = parseJsonFromText(text) as Partial<LocalImagePromptPlan>;
+  if (typeof parsed.prompt !== "string" || parsed.prompt.trim().length < 40) return null;
+
+  return {
+    prompt: parsed.prompt.trim().slice(0, 1200),
+    negativePrompt: typeof parsed.negativePrompt === "string" && parsed.negativePrompt.trim()
+      ? parsed.negativePrompt.trim().slice(0, 900)
+      : stableDiffusionNegativePrompt(),
+    reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 300) : undefined
+  };
+}
+
+async function generateLocalImagePromptPlanWithGemini(context: RecipeImageContext) {
+  const genAI = getGeminiClient();
+  if (!genAI) return null;
+
+  const model = genAI.getGenerativeModel({
+    model: getGeminiModelName(),
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.15
+    }
+  });
+
+  const prompt = [
+    "You are writing a precise SDXL / ComfyUI prompt for a recipe reference photo.",
+    "Infer the final plated dish from the full recipe context, not just the title.",
+    "Write a concrete English food-photography prompt that makes the generated image match the actual recipe.",
+    "Include the final cooking method, visible cooked ingredients, texture, sauce or garnish, plate/bowl type, and plating style.",
+    "The composition must show exactly one complete finished dish. The entire plate or bowl must be visible, with no cropped edges and no extreme close-up.",
+    "Do not invent a different dish. Do not request text, labels, packaging, people, hands, or multiple dishes.",
+    "Keep the prompt suitable for SDXL: comma-separated visual phrases, 70 to 130 words.",
+    "",
+    "Recipe context:",
+    recipeVisualContext(context),
+    "",
+    "Return JSON only with this exact shape:",
+    JSON.stringify({
+      prompt: "professional realistic restaurant menu food photo, one complete finished dish...",
+      negativePrompt: "cropped edges, extreme close-up, raw ingredients, multiple dishes, text, watermark...",
+      reason: "short reason"
+    })
+  ].join("\n");
+
+  try {
+    const result = await model.generateContent(prompt);
+    return parsePromptPlan(result.response.text());
+  } catch (error) {
+    console.warn("Gemini recipe image prompt planning failed", error);
+    return null;
+  }
+}
+
+async function localImagePromptPlan(context: RecipeImageContext) {
+  const plannedPrompt = await generateLocalImagePromptPlanWithGemini(context);
+  return plannedPrompt ?? fallbackLocalImagePromptPlan(context);
 }
 
 function stableDiffusionNegativePrompt() {
   return [
     process.env.SD_IMAGE_NEGATIVE_PROMPT?.trim(),
+    "extreme close-up",
+    "macro photo",
+    "cropped dish",
+    "cut off plate",
+    "partial plate",
+    "plate outside frame",
+    "zoomed in",
     "multiple dishes",
     "several plates",
     "raw ingredients",
@@ -476,7 +585,7 @@ function stripDataImagePrefix(imageData: string) {
   return imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
 }
 
-async function requestGeneratedImageFromSdWebUi(context: RecipeImageContext) {
+async function requestGeneratedImageFromSdWebUi(context: RecipeImageContext, promptPlan: LocalImagePromptPlan) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), integerEnv("SD_IMAGE_TIMEOUT_MS", 120_000, 10_000, 600_000));
 
@@ -486,8 +595,8 @@ async function requestGeneratedImageFromSdWebUi(context: RecipeImageContext) {
       headers: sdWebUiHeaders(),
       signal: controller.signal,
       body: JSON.stringify({
-        prompt: stableDiffusionPrompt(context),
-        negative_prompt: stableDiffusionNegativePrompt(),
+        prompt: promptPlan.prompt,
+        negative_prompt: promptPlan.negativePrompt,
         sampler_name: process.env.SD_IMAGE_SAMPLER?.trim() || "Euler a",
         steps: integerEnv("SD_IMAGE_STEPS", 18, 1, 80),
         cfg_scale: floatEnv("SD_IMAGE_CFG_SCALE", 6, 1, 20),
@@ -526,13 +635,13 @@ async function requestGeneratedImageFromSdWebUi(context: RecipeImageContext) {
   }
 }
 
-async function generateRecipeImageWithLocalSd(context: RecipeImageContext) {
+async function generateRecipeImageWithLocalSd(context: RecipeImageContext, promptPlan: LocalImagePromptPlan) {
   const cacheKey = recipeImageCacheKey(context, "local-sd");
   if (generatedImageCache.has(cacheKey)) {
     return generatedImageCache.get(cacheKey) ?? null;
   }
 
-  const imageBlock = await requestGeneratedImageFromSdWebUi(context);
+  const imageBlock = await requestGeneratedImageFromSdWebUi(context, promptPlan);
   if (!imageBlock) return null;
 
   const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
@@ -542,7 +651,7 @@ async function generateRecipeImageWithLocalSd(context: RecipeImageContext) {
     sourceUrl: getSdWebUiUrl(),
     provider: "local",
     aiSelected: true,
-    aiReason: "Generated from the recipe context with local Stable Diffusion WebUI."
+    aiReason: promptPlan.reason ?? "Generated from the full recipe context with local Stable Diffusion WebUI."
   };
   setGeneratedImageCache(cacheKey, image);
   return image;
@@ -594,7 +703,7 @@ async function getComfyUiCheckpoint() {
   }
 }
 
-function comfyUiWorkflow(context: RecipeImageContext, ckptName: string) {
+function comfyUiWorkflow(context: RecipeImageContext, ckptName: string, promptPlan: LocalImagePromptPlan) {
   return {
     "3": {
       class_type: "KSampler",
@@ -628,14 +737,14 @@ function comfyUiWorkflow(context: RecipeImageContext, ckptName: string) {
     "6": {
       class_type: "CLIPTextEncode",
       inputs: {
-        text: stableDiffusionPrompt(context),
+        text: promptPlan.prompt,
         clip: ["4", 1]
       }
     },
     "7": {
       class_type: "CLIPTextEncode",
       inputs: {
-        text: stableDiffusionNegativePrompt(),
+        text: promptPlan.negativePrompt,
         clip: ["4", 1]
       }
     },
@@ -656,7 +765,7 @@ function comfyUiWorkflow(context: RecipeImageContext, ckptName: string) {
   };
 }
 
-async function queueComfyUiPrompt(context: RecipeImageContext) {
+async function queueComfyUiPrompt(context: RecipeImageContext, promptPlan: LocalImagePromptPlan) {
   const ckptName = await getComfyUiCheckpoint();
   if (!ckptName) {
     console.warn("ComfyUI is unavailable or no checkpoint was found.");
@@ -668,7 +777,7 @@ async function queueComfyUiPrompt(context: RecipeImageContext) {
     headers: comfyUiHeaders(),
     body: JSON.stringify({
       client_id: `daily-health-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      prompt: comfyUiWorkflow(context, ckptName)
+      prompt: comfyUiWorkflow(context, ckptName, promptPlan)
     })
   });
   const payload = (await response.json().catch(() => null)) as { prompt_id?: unknown } | null;
@@ -754,9 +863,9 @@ async function fetchComfyUiImage(image: ComfyUiImageInfo) {
   };
 }
 
-async function requestGeneratedImageFromComfyUi(context: RecipeImageContext) {
+async function requestGeneratedImageFromComfyUi(context: RecipeImageContext, promptPlan: LocalImagePromptPlan) {
   try {
-    const promptId = await queueComfyUiPrompt(context);
+    const promptId = await queueComfyUiPrompt(context, promptPlan);
     if (!promptId) return null;
 
     const imageInfo = await pollComfyUiImage(promptId);
@@ -769,13 +878,13 @@ async function requestGeneratedImageFromComfyUi(context: RecipeImageContext) {
   }
 }
 
-async function generateRecipeImageWithComfyUi(context: RecipeImageContext) {
+async function generateRecipeImageWithComfyUi(context: RecipeImageContext, promptPlan: LocalImagePromptPlan) {
   const cacheKey = recipeImageCacheKey(context, "local-comfyui");
   if (generatedImageCache.has(cacheKey)) {
     return generatedImageCache.get(cacheKey) ?? null;
   }
 
-  const imageBlock = await requestGeneratedImageFromComfyUi(context);
+  const imageBlock = await requestGeneratedImageFromComfyUi(context, promptPlan);
   if (!imageBlock) return null;
 
   const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
@@ -785,15 +894,24 @@ async function generateRecipeImageWithComfyUi(context: RecipeImageContext) {
     sourceUrl: getComfyUiUrl(),
     provider: "local",
     aiSelected: true,
-    aiReason: "Generated from the recipe context with local ComfyUI."
+    aiReason: promptPlan.reason ?? "Generated from the full recipe context with local ComfyUI."
   };
   setGeneratedImageCache(cacheKey, image);
   return image;
 }
 
+async function runQueuedLocalImageGeneration(job: () => Promise<RecipeImage | null>) {
+  const queuedJob = localImageGenerationQueue.catch(() => undefined).then(job);
+  localImageGenerationQueue = queuedJob.then(() => undefined, () => undefined);
+  return queuedJob;
+}
+
 async function generateRecipeImageWithLocalProvider(context: RecipeImageContext) {
-  if (getLocalImageApi() === "sdwebui") return generateRecipeImageWithLocalSd(context);
-  return generateRecipeImageWithComfyUi(context);
+  const promptPlan = await localImagePromptPlan(context);
+  return runQueuedLocalImageGeneration(() => {
+    if (getLocalImageApi() === "sdwebui") return generateRecipeImageWithLocalSd(context, promptPlan);
+    return generateRecipeImageWithComfyUi(context, promptPlan);
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1173,9 +1291,13 @@ function contextFromBody(body: unknown): RecipeImageContext {
   const record = body as Record<string, unknown>;
   return {
     title: typeof record.title === "string" ? record.title : undefined,
+    localizedTitle: typeof record.localizedTitle === "string" ? record.localizedTitle : null,
+    shortDescription: typeof record.shortDescription === "string" ? record.shortDescription : null,
     referenceImageQuery: typeof record.referenceImageQuery === "string" ? record.referenceImageQuery : null,
     cuisineStyle: typeof record.cuisineStyle === "string" ? record.cuisineStyle : null,
     ingredients: Array.isArray(record.ingredients) ? record.ingredients.filter((ingredient): ingredient is string => typeof ingredient === "string") : [],
+    steps: Array.isArray(record.steps) ? record.steps.filter((step): step is string => typeof step === "string") : [],
+    tips: Array.isArray(record.tips) ? record.tips.filter((tip): tip is string => typeof tip === "string") : [],
     queries: Array.isArray(record.queries) ? record.queries.filter((query): query is string => typeof query === "string") : [],
     excludeUrls: Array.isArray(record.excludeUrls) ? record.excludeUrls.filter((url): url is string => typeof url === "string") : [],
     excludeSourceTitles: Array.isArray(record.excludeSourceTitles) ? record.excludeSourceTitles.filter((title): title is string => typeof title === "string") : [],
