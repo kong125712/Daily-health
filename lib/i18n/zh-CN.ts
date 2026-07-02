@@ -100,6 +100,7 @@ export const zhCN: Record<keyof typeof en, string> = {
   "recipes.allowExtras": "允许 1 到 3 种可选额外食材",
   "recipes.generate": "生成菜谱",
   "recipes.saveRecipe": "收藏菜谱",
+  "recipes.referenceImage": "参考图片",
   "recipes.copyIngredients": "复制食材清单",
   "recipes.viewFull": "查看完整做法",
   "recipes.logMeal": "记录为今日餐食",

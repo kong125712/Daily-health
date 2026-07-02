@@ -68,6 +68,7 @@ export type RecipePreferenceInput = {
 export type GeneratedRecipeInput = {
   cuisineStyle: string;
   difficulty: Difficulty;
+  referenceImageQuery?: string;
   estimatedCookingMinutes: number;
   servings: number;
   estimatedCaloriesPerServing?: number;
@@ -109,6 +110,7 @@ export type RecipeView = {
   sourceScanId: string | null;
   cuisineStyle: string;
   difficulty: Difficulty;
+  referenceImageQuery: string | null;
   estimatedCookingMinutes: number;
   servings: number;
   estimatedCaloriesPerServing: number | null;

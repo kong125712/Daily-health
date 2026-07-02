@@ -113,6 +113,7 @@ export async function generateRecipesWithGeminiImpl(input: {
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
     "Use structured JSON only with a top-level recipes array of exactly 3 items.",
+    "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use concrete dish/ingredient words, no brands and no punctuation.",
     "",
     "Visible or user-confirmed ingredients:",
     ingredientText || "No ingredients provided.",
@@ -129,6 +130,7 @@ export async function generateRecipesWithGeminiImpl(input: {
         {
           cuisineStyle: "string",
           difficulty: "easy | medium",
+          referenceImageQuery: "tomato egg stir fry",
           estimatedCookingMinutes: 0,
           servings: 0,
           estimatedCaloriesPerServing: 0,

@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         displayNameEn: ingredient.nameEn,
         displayNameZh: ingredient.nameZh,
         estimatedAmount: ingredient.amount,
+        estimatedCalories: undefined,
         confidence: "medium",
         notes: ""
       }));

@@ -98,6 +98,7 @@ export const en = {
   "recipes.allowExtras": "Allow 1 to 3 optional extra ingredients",
   "recipes.generate": "Generate Recipes",
   "recipes.saveRecipe": "Save Recipe",
+  "recipes.referenceImage": "Reference image",
   "recipes.copyIngredients": "Copy Ingredients",
   "recipes.viewFull": "View Full Recipe",
   "recipes.logMeal": "Log as Today's Meal",

@@ -64,6 +64,7 @@ export const recipePreferenceSchema = z.object({
 export const generatedRecipeSchema = z.object({
   cuisineStyle: z.string().trim().min(1).max(80),
   difficulty: z.enum(["easy", "medium"]),
+  referenceImageQuery: z.string().trim().min(1).max(120).optional(),
   estimatedCookingMinutes: z.number().int().min(1).max(240),
   servings: z.number().int().min(1).max(12),
   estimatedCaloriesPerServing: z.number().int().min(0).max(3000).optional(),

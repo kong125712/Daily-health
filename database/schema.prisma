@@ -93,6 +93,7 @@ model Recipe {
   sourceScanId                String?
   cuisineStyle                String
   difficulty                  String
+  referenceImageQuery         String?
   estimatedCookingMinutes     Int
   servings                    Int
   estimatedCaloriesPerServing Int?

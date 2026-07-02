@@ -7,6 +7,7 @@ import { ingredientName, isoToday, recipeTranslation } from "@/lib/client/displa
 import { useApp } from "@/lib/i18n/I18nProvider";
 import type { MealCategory, RecipeView } from "@/lib/types/domain";
 import { RecipeDetailModal } from "./RecipeDetailModal";
+import { RecipeReferenceImage } from "./RecipeReferenceImage";
 
 type RecipeCardProps = {
   recipe: RecipeView;
@@ -68,7 +69,8 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
 
   return (
     <article className="rounded-md border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-3">
+      <RecipeReferenceImage recipe={recipe} compact />
+      <div className="mt-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-slate-950 dark:text-white">{translation?.title}</h3>
           <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{translation?.shortDescription}</p>

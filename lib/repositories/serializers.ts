@@ -115,6 +115,7 @@ export function serializeRecipe(recipe: RecipeRecord): RecipeView {
     sourceScanId: recipe.sourceScanId,
     cuisineStyle: recipe.cuisineStyle,
     difficulty: asDifficulty(recipe.difficulty),
+    referenceImageQuery: recipe.referenceImageQuery,
     estimatedCookingMinutes: recipe.estimatedCookingMinutes,
     servings: recipe.servings,
     estimatedCaloriesPerServing: recipe.estimatedCaloriesPerServing,

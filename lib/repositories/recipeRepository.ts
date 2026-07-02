@@ -23,6 +23,7 @@ export async function createRecipes(input: {
           sourceScanId: input.sourceScanId,
           cuisineStyle: recipe.cuisineStyle,
           difficulty: recipe.difficulty,
+          referenceImageQuery: recipe.referenceImageQuery,
           estimatedCookingMinutes: recipe.estimatedCookingMinutes,
           servings: recipe.servings,
           estimatedCaloriesPerServing: recipe.estimatedCaloriesPerServing,

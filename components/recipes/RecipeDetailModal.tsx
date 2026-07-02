@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { ingredientName, recipeTranslation } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import type { RecipeView } from "@/lib/types/domain";
+import { RecipeReferenceImage } from "./RecipeReferenceImage";
 
 export function RecipeDetailModal({ recipe, onClose }: { recipe: RecipeView | null; onClose: () => void }) {
   const { locale, t } = useApp();
@@ -23,6 +24,9 @@ export function RecipeDetailModal({ recipe, onClose }: { recipe: RecipeView | nu
             <X className="h-4 w-4" aria-hidden="true" />
             <span className="sr-only">{t("common.close")}</span>
           </button>
+        </div>
+        <div className="mt-5">
+          <RecipeReferenceImage recipe={recipe} />
         </div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <section>
