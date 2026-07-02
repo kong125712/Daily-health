@@ -107,8 +107,11 @@ export async function generateRecipesWithGeminiImpl(input: {
     : "No external flavor graph pairings available; use standard culinary pairing logic.";
 
   const prompt = [
-    "Generate exactly 3 practical home-cooking recipes.",
+    "Generate exactly 3 practical home-cooking recipes with meaningfully different finished dishes.",
     "Prefer the provided recognized ingredients and use the flavor pairing suggestions when useful.",
+    "The 3 recipes may share the same main ingredient, but they must not be near-duplicate finished products.",
+    "Make each recipe differ from the others in at least two of these ways: cooking method, dish format, sauce or broth texture, cuisine flavor profile, serving style.",
+    "Avoid minor variants such as three tomato egg stir-fry/omelet/rice dishes. Prefer clearly distinct forms such as stir-fry, soup, stew, curry, rice bowl, noodle dish, salad, baked or grilled dish, wrap, or sandwich.",
     "Clearly mark optional missing ingredients.",
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
