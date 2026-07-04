@@ -3,6 +3,7 @@ import type {
   ExerciseLog,
   FoodLog,
   Prisma,
+  Profile,
   Recipe,
   SleepLog,
   WaterEntry,
@@ -17,6 +18,10 @@ import type {
   IngredientConfidence,
   IngredientScanView,
   MealCategory,
+  ActivityLevel,
+  CalorieGoal,
+  ProfileGender,
+  RecipeReferenceImageView,
   RecipeView,
   SleepLogView,
   SleepQuality,
@@ -69,7 +74,54 @@ export function asSleepQuality(value: string): SleepQuality {
 }
 
 export function asDifficulty(value: string): Difficulty {
+  if (value === "hard") {
+    return "hard";
+  }
   return value === "medium" ? "medium" : "easy";
+}
+
+export function asProfileGender(value: string | null): ProfileGender | null {
+  if (value === "male" || value === "female" || value === "other") {
+    return value;
+  }
+  return null;
+}
+
+export function asActivityLevel(value: string): ActivityLevel {
+  if (value === "light" || value === "moderate" || value === "active" || value === "very_active") {
+    return value;
+  }
+  return "sedentary";
+}
+
+export function asCalorieGoal(value: string): CalorieGoal {
+  if (value === "lose" || value === "gain") {
+    return value;
+  }
+  return "maintain";
+}
+
+function asRecipeImageProvider(value: string | null): RecipeReferenceImageView["provider"] {
+  if (value === "ai" || value === "gemini" || value === "local" || value === "replicate" || value === "themealdb" || value === "wikipedia" || value === "wikimedia") {
+    return value;
+  }
+  return "local";
+}
+
+export function serializeProfile(profile: Profile) {
+  return {
+    id: profile.id,
+    displayName: profile.displayName,
+    gender: asProfileGender(profile.gender),
+    birthYear: profile.birthYear,
+    heightCm: profile.heightCm,
+    weightKg: profile.weightKg,
+    activityLevel: asActivityLevel(profile.activityLevel),
+    calorieGoal: asCalorieGoal(profile.calorieGoal),
+    dailyCalorieTarget: profile.dailyCalorieTarget,
+    createdAt: toIso(profile.createdAt),
+    updatedAt: toIso(profile.updatedAt)
+  };
 }
 
 export function serializeScan(scan: ScanRecord): IngredientScanView {
@@ -80,6 +132,7 @@ export function serializeScan(scan: ScanRecord): IngredientScanView {
     overallConfidence: asConfidence(scan.overallConfidence),
     uncertaintyNoteEn: scan.uncertaintyNoteEn,
     uncertaintyNoteZh: scan.uncertaintyNoteZh,
+    confirmedAt: scan.confirmedAt ? toIso(scan.confirmedAt) : null,
     createdAt: toIso(scan.createdAt),
     ingredients: scan.ingredients.map((ingredient) => ({
       id: ingredient.id,
@@ -109,6 +162,20 @@ export function serializePairing(pairing: EpicurePairing): EpicurePairingView {
 }
 
 export function serializeRecipe(recipe: RecipeRecord): RecipeView {
+  const referenceImage = recipe.referenceImageUrl ? {
+    url: recipe.referenceImageUrl,
+    sourceTitle: recipe.referenceImageSourceTitle ?? recipe.referenceImageQuery ?? recipeFallbackTitle(recipe),
+    sourceUrl: recipe.referenceImageSourceUrl ?? "",
+    provider: asRecipeImageProvider(recipe.referenceImageProvider),
+    crop: recipe.referenceImageCropXPercent == null || recipe.referenceImageCropYPercent == null || recipe.referenceImageCropZoom == null ? undefined : {
+      xPercent: recipe.referenceImageCropXPercent,
+      yPercent: recipe.referenceImageCropYPercent,
+      zoom: recipe.referenceImageCropZoom
+    },
+    aiSelected: Boolean(recipe.referenceImageAiReason),
+    aiReason: recipe.referenceImageAiReason ?? undefined
+  } : null;
+
   return {
     id: recipe.id,
     profileId: recipe.profileId,
@@ -116,6 +183,7 @@ export function serializeRecipe(recipe: RecipeRecord): RecipeView {
     cuisineStyle: recipe.cuisineStyle,
     difficulty: asDifficulty(recipe.difficulty),
     referenceImageQuery: recipe.referenceImageQuery,
+    referenceImage,
     estimatedCookingMinutes: recipe.estimatedCookingMinutes,
     servings: recipe.servings,
     estimatedCaloriesPerServing: recipe.estimatedCaloriesPerServing,
@@ -170,6 +238,9 @@ export function serializeFoodLog(log: FoodLog): FoodLogView {
     nameEn: log.nameEn,
     nameZh: log.nameZh,
     calories: log.calories,
+    proteinGrams: log.proteinGrams,
+    carbsGrams: log.carbsGrams,
+    fatGrams: log.fatGrams,
     notes: log.notes,
     sourceType: asFoodLogSource(log.sourceType),
     createdAt: toIso(log.createdAt),

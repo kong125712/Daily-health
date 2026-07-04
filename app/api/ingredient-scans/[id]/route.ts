@@ -39,7 +39,8 @@ export async function PATCH(
     const scan = await updateRecognizedIngredients({
       profileId: body.profileId,
       scanId: id,
-      ingredients: body.ingredients
+      ingredients: body.ingredients,
+      confirmed: body.confirmed
     });
     if (!scan) {
       return jsonError("Scan not found.", 404);

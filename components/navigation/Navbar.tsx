@@ -9,9 +9,9 @@ import {
   Droplets,
   HeartPulse,
   Home,
+  LayoutGrid,
   Salad,
   ScanSearch,
-  Settings,
   Utensils
 } from "lucide-react";
 import { useApp } from "@/lib/i18n/I18nProvider";
@@ -33,7 +33,7 @@ export const navItems: Array<{
   { href: "/wellness", label: "nav.wellness", icon: HeartPulse },
   { href: "/history", label: "nav.history", icon: CalendarDays },
   { href: "/my-recipes", label: "nav.myRecipes", icon: BookOpen },
-  { href: "/settings", label: "nav.settings", icon: Settings }
+  { href: "/me", label: "nav.me", icon: LayoutGrid }
 ];
 
 export function Navbar() {

@@ -23,7 +23,8 @@ const cookingTimes: Option[] = [
   { value: "No Preference", key: "option.noPreference" },
   { value: "Within 15 minutes", key: "option.15" },
   { value: "Within 30 minutes", key: "option.30" },
-  { value: "Within 45 minutes", key: "option.45" }
+  { value: "Within 45 minutes", key: "option.45" },
+  { value: "Within 60 minutes", key: "option.60" }
 ];
 
 const dietary: Option[] = [
@@ -105,6 +106,7 @@ export function RecipePreferenceForm({
             <option value="no_preference">{t("option.noPreference")}</option>
             <option value="easy">{t("option.easy")}</option>
             <option value="medium">{t("option.medium")}</option>
+            <option value="hard">{t("option.hard")}</option>
           </select>
         </label>
         <label className="grid gap-1">

@@ -1,8 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest } from "next/server";
+import { prisma } from "@/lib/db";
 import { jsonOk } from "@/lib/server/http";
 
-type RecipeImageProvider = "ai" | "local" | "themealdb" | "wikipedia" | "wikimedia";
+type RecipeImageProvider = "ai" | "gemini" | "local" | "replicate" | "themealdb" | "wikipedia" | "wikimedia";
+type RecipeImageGenerationProvider = "disabled" | "gemini" | "local" | "replicate";
 
 type RecipeImage = {
   url: string;
@@ -263,7 +265,7 @@ async function findWikipediaImages(query: string): Promise<RecipeImageCandidate[
 
 async function findMealDbImages(query: string): Promise<RecipeImageCandidate[]> {
   const params = new URLSearchParams({ s: query });
-  const data = await fetchMealDbJson(`https://www.themealdb.com/api/json/v1/1/search.php?${params}`);
+  const data = await fetchMealDbJson(`https://www.themealdb.com/api/json/v1/${getMealDbApiKey()}/search.php?${params}`);
   return (data?.meals ?? [])
     .map((meal) => ({ meal, score: matchScore(query, meal.strMeal ?? "") }))
     .filter((item) => item.score > 0 && item.meal.strMealThumb)
@@ -318,7 +320,11 @@ function getGeminiClient() {
 }
 
 function getGeminiModelName() {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-flash-lite-latest";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite";
+}
+
+function getMealDbApiKey() {
+  return process.env.THEMEALDB_API_KEY?.trim() || "1";
 }
 
 function getGeminiImageModelNames() {
@@ -330,10 +336,14 @@ function getGeminiImageModelNames() {
   ].filter((model): model is string => Boolean(model))));
 }
 
-function getRecipeImageProvider() {
+function getRecipeImageProvider(): RecipeImageGenerationProvider {
   const provider = process.env.RECIPE_IMAGE_PROVIDER?.trim().toLowerCase();
-  if (provider === "gemini" || provider === "local") return provider;
+  if (provider === "disabled" || provider === "gemini" || provider === "local" || provider === "replicate") return provider;
   return "local";
+}
+
+function getReplicateImageModel() {
+  return process.env.REPLICATE_IMAGE_MODEL?.trim() || "black-forest-labs/flux-schnell";
 }
 
 function getSdWebUiUrl() {
@@ -362,6 +372,18 @@ function floatEnv(name: string, fallback: number, min: number, max: number) {
   return clamp(parsed, min, max);
 }
 
+function hasEnvValue(name: string) {
+  return Boolean(process.env[name]?.trim());
+}
+
+function isFluxCheckpoint(ckptName: string) {
+  return /(^|[._-])flux/i.test(ckptName) || /flux/i.test(ckptName);
+}
+
+function isFluxSchnellCheckpoint(ckptName: string) {
+  return isFluxCheckpoint(ckptName) && /schnell/i.test(ckptName);
+}
+
 function parseJsonFromText(text: string): unknown {
   const trimmed = text.trim();
   const withoutFence = trimmed
@@ -380,6 +402,76 @@ function recipeContextQueries(context: RecipeImageContext) {
     context.referenceImageQuery && context.cuisineStyle ? `${context.referenceImageQuery} ${context.cuisineStyle}` : null,
     context.title && ingredientText ? `${context.title} ${ingredientText}` : null
   ]);
+}
+
+function recipeImageCacheKeys(context: RecipeImageContext) {
+  return recipeContextQueries(context)
+    .map((query) => ({ query, cacheKey: `dish:${query}` }))
+    .filter((item) => item.query.length > 2)
+    .slice(0, 6);
+}
+
+function isImageExcluded(image: RecipeImage, context: RecipeImageContext) {
+  const excludedUrls = excludedSet(context.excludeUrls);
+  const excludedTitles = excludedSet(context.excludeSourceTitles);
+  if (excludedUrls.size === 0 && excludedTitles.size === 0) return false;
+  return excludedUrls.has(normalizeText(image.url)) || excludedTitles.has(normalizeText(image.sourceTitle));
+}
+
+function imageFromCacheRecord(record: {
+  url: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  provider: string;
+  cropXPercent: number | null;
+  cropYPercent: number | null;
+  cropZoom: number | null;
+  aiSelected: boolean;
+  aiReason: string | null;
+}): RecipeImage {
+  return {
+    url: record.url,
+    sourceTitle: record.sourceTitle,
+    sourceUrl: record.sourceUrl,
+    provider: record.provider === "ai" || record.provider === "gemini" || record.provider === "local" || record.provider === "replicate" || record.provider === "themealdb" || record.provider === "wikipedia" || record.provider === "wikimedia"
+      ? record.provider
+      : "local",
+    crop: record.cropXPercent == null || record.cropYPercent == null || record.cropZoom == null ? undefined : {
+      xPercent: record.cropXPercent,
+      yPercent: record.cropYPercent,
+      zoom: record.cropZoom
+    },
+    aiSelected: record.aiSelected,
+    aiReason: record.aiReason ?? undefined
+  };
+}
+
+async function findApprovedCachedRecipeImage(context: RecipeImageContext) {
+  const cacheKeys = recipeImageCacheKeys(context);
+  if (cacheKeys.length === 0) return null;
+
+  const records = await prisma.recipeImageCache.findMany({
+    where: { cacheKey: { in: cacheKeys.map((item) => item.cacheKey) } },
+    orderBy: [{ hits: "desc" }, { lastUsedAt: "desc" }]
+  });
+
+  for (const record of records) {
+    const image = imageFromCacheRecord(record);
+    if (isImageExcluded(image, context)) continue;
+    void prisma.recipeImageCache.update({
+      where: { cacheKey: record.cacheKey },
+      data: {
+        hits: { increment: 1 },
+        lastUsedAt: new Date()
+      }
+    }).catch(() => undefined);
+    return {
+      ...image,
+      aiReason: image.aiReason ?? "Approved cached image from a previously bound recipe."
+    };
+  }
+
+  return null;
 }
 
 function recipeImageCacheKey(context: RecipeImageContext, provider: string) {
@@ -475,6 +567,63 @@ function fallbackLocalImagePromptPlan(context: RecipeImageContext): LocalImagePr
   };
 }
 
+function compactPromptItems(values: string[] | undefined, maxItems: number, maxLength: number) {
+  return (values ?? [])
+    .slice(0, maxItems)
+    .map((value) => safePromptText(value, maxLength))
+    .filter(Boolean);
+}
+
+function recipeSpecificPromptGuard(context: RecipeImageContext) {
+  const title = safePromptText(context.title) || safePromptText(context.referenceImageQuery) || "the exact finished recipe dish";
+  const localizedTitle = safePromptText(context.localizedTitle);
+  const referenceQuery = safePromptText(context.referenceImageQuery);
+  const cuisine = safePromptText(context.cuisineStyle);
+  const description = safePromptText(context.shortDescription, 180);
+  const ingredients = compactPromptItems(context.ingredients, 10, 70);
+  const steps = compactPromptItems(context.steps, 4, 95);
+
+  return [
+    "exact recipe target, not a generic food photo",
+    `finished dish identity: ${title}`,
+    localizedTitle ? `localized dish name: ${localizedTitle}` : "",
+    referenceQuery && referenceQuery !== title ? `visual reference name: ${referenceQuery}` : "",
+    cuisine ? `cuisine style: ${cuisine}` : "",
+    description ? `final plated appearance: ${description}` : "",
+    ingredients.length > 0 ? `visible cooked ingredients must include: ${ingredients.join(", ")}` : "",
+    steps.length > 0 ? `cooking method cues must match: ${steps.join("; ")}` : "",
+    "one complete finished serving only",
+    "full plate or bowl fully visible inside frame",
+    "centered medium-distance food photography",
+    "clean simple background, no extra dishes, no raw ingredient display, no text"
+  ].filter(Boolean).join(", ");
+}
+
+function strengthenLocalImagePromptPlan(context: RecipeImageContext, promptPlan: LocalImagePromptPlan): LocalImagePromptPlan {
+  const prompt = [
+    recipeSpecificPromptGuard(context),
+    promptPlan.prompt
+  ].filter(Boolean).join(", ").slice(0, 1600);
+
+  const negativePrompt = [
+    promptPlan.negativePrompt,
+    "generic food",
+    "wrong dish",
+    "missing main ingredient",
+    "ingredient-only photo",
+    "uncooked food",
+    "extra side dishes",
+    "split image",
+    "collage"
+  ].filter(Boolean).join(", ").slice(0, 1100);
+
+  return {
+    ...promptPlan,
+    prompt,
+    negativePrompt
+  };
+}
+
 function parsePromptPlan(text: string): LocalImagePromptPlan | null {
   const parsed = parseJsonFromText(text) as Partial<LocalImagePromptPlan>;
   if (typeof parsed.prompt !== "string" || parsed.prompt.trim().length < 40) return null;
@@ -501,13 +650,15 @@ async function generateLocalImagePromptPlanWithGemini(context: RecipeImageContex
   });
 
   const prompt = [
-    "You are writing a precise SDXL / ComfyUI prompt for a recipe reference photo.",
+    "You are writing a precise FLUX / SDXL / ComfyUI prompt for a recipe reference photo.",
     "Infer the final plated dish from the full recipe context, not just the title.",
     "Write a concrete English food-photography prompt that makes the generated image match the actual recipe.",
-    "Include the final cooking method, visible cooked ingredients, texture, sauce or garnish, plate/bowl type, and plating style.",
+    "Begin with the exact finished dish identity, then include visible cooked ingredients, cooking method, texture, sauce or garnish, plate/bowl type, and plating style.",
+    "Use recipe-specific visual nouns instead of broad words like healthy meal, rice bowl, salad, or soup unless the recipe is actually that category.",
+    "If the title and ingredients conflict, prioritize the ingredients and cooking steps.",
     "The composition must show exactly one complete finished dish. The entire plate or bowl must be visible, with no cropped edges and no extreme close-up.",
     "Do not invent a different dish. Do not request text, labels, packaging, people, hands, or multiple dishes.",
-    "Keep the prompt suitable for SDXL: comma-separated visual phrases, 70 to 130 words.",
+    "Keep the prompt suitable for FLUX and SDXL: direct comma-separated visual phrases, 80 to 150 words.",
     "",
     "Recipe context:",
     recipeVisualContext(context),
@@ -531,7 +682,7 @@ async function generateLocalImagePromptPlanWithGemini(context: RecipeImageContex
 
 async function localImagePromptPlan(context: RecipeImageContext) {
   const plannedPrompt = await generateLocalImagePromptPlanWithGemini(context);
-  return plannedPrompt ?? fallbackLocalImagePromptPlan(context);
+  return strengthenLocalImagePromptPlan(context, plannedPrompt ?? fallbackLocalImagePromptPlan(context));
 }
 
 function stableDiffusionNegativePrompt() {
@@ -662,17 +813,39 @@ function imageDimensionEnv(primaryName: string, fallbackName: string, fallback: 
   return Math.round(value / 8) * 8;
 }
 
+function comfyUiImageWidth(ckptName: string) {
+  return imageDimensionEnv("COMFYUI_IMAGE_WIDTH", "SD_IMAGE_WIDTH", isFluxCheckpoint(ckptName) ? 640 : 768);
+}
+
+function comfyUiImageHeight(ckptName: string) {
+  return imageDimensionEnv("COMFYUI_IMAGE_HEIGHT", "SD_IMAGE_HEIGHT", isFluxCheckpoint(ckptName) ? 448 : 576);
+}
+
 function comfyUiSeed() {
   const configured = integerEnv("COMFYUI_SEED", integerEnv("SD_IMAGE_SEED", -1, -1, 2_147_483_647), -1, 2_147_483_647);
   return configured >= 0 ? configured : Math.floor(Math.random() * 2_147_483_647);
+}
+
+function comfyUiSteps(ckptName: string) {
+  if (hasEnvValue("COMFYUI_STEPS")) return integerEnv("COMFYUI_STEPS", 18, 1, 80);
+  if (hasEnvValue("SD_IMAGE_STEPS")) return integerEnv("SD_IMAGE_STEPS", 18, 1, 80);
+  if (isFluxSchnellCheckpoint(ckptName)) return 4;
+  if (isFluxCheckpoint(ckptName)) return 20;
+  return 18;
+}
+
+function comfyUiCfgScale(ckptName: string) {
+  if (hasEnvValue("COMFYUI_CFG_SCALE")) return floatEnv("COMFYUI_CFG_SCALE", 6, 0, 20);
+  if (hasEnvValue("SD_IMAGE_CFG_SCALE")) return floatEnv("SD_IMAGE_CFG_SCALE", 6, 0, 20);
+  return isFluxCheckpoint(ckptName) ? 1 : 6;
 }
 
 function comfyUiSampler() {
   return process.env.COMFYUI_SAMPLER?.trim() || "euler";
 }
 
-function comfyUiScheduler() {
-  return process.env.COMFYUI_SCHEDULER?.trim() || "normal";
+function comfyUiScheduler(ckptName: string) {
+  return process.env.COMFYUI_SCHEDULER?.trim() || (isFluxCheckpoint(ckptName) ? "simple" : "normal");
 }
 
 async function getComfyUiCheckpoint() {
@@ -709,10 +882,10 @@ function comfyUiWorkflow(context: RecipeImageContext, ckptName: string, promptPl
       class_type: "KSampler",
       inputs: {
         seed: comfyUiSeed(),
-        steps: integerEnv("COMFYUI_STEPS", integerEnv("SD_IMAGE_STEPS", 18, 1, 80), 1, 80),
-        cfg: floatEnv("COMFYUI_CFG_SCALE", floatEnv("SD_IMAGE_CFG_SCALE", 6, 1, 20), 1, 20),
+        steps: comfyUiSteps(ckptName),
+        cfg: comfyUiCfgScale(ckptName),
         sampler_name: comfyUiSampler(),
-        scheduler: comfyUiScheduler(),
+        scheduler: comfyUiScheduler(ckptName),
         denoise: 1,
         model: ["4", 0],
         positive: ["6", 0],
@@ -729,8 +902,8 @@ function comfyUiWorkflow(context: RecipeImageContext, ckptName: string, promptPl
     "5": {
       class_type: "EmptyLatentImage",
       inputs: {
-        width: imageDimensionEnv("COMFYUI_IMAGE_WIDTH", "SD_IMAGE_WIDTH", 768),
-        height: imageDimensionEnv("COMFYUI_IMAGE_HEIGHT", "SD_IMAGE_HEIGHT", 576),
+        width: comfyUiImageWidth(ckptName),
+        height: comfyUiImageHeight(ckptName),
         batch_size: 1
       }
     },
@@ -1023,7 +1196,7 @@ async function generateRecipeImageWithGemini(context: RecipeImageContext) {
       url: `data:${imageBlock.mimeType};base64,${imageBlock.data}`,
       sourceTitle: `${title} AI generated reference`,
       sourceUrl: "https://ai.google.dev/gemini-api/docs/image-generation",
-      provider: "ai",
+      provider: "gemini",
       aiSelected: true,
       aiReason: `Generated from the recipe context with ${model}.`
     };
@@ -1034,8 +1207,90 @@ async function generateRecipeImageWithGemini(context: RecipeImageContext) {
   return null;
 }
 
+function replicateOutputUrl(payload: unknown): string | null {
+  if (typeof payload === "string" && /^https?:\/\//i.test(payload)) return payload;
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const found = replicateOutputUrl(item);
+      if (found) return found;
+    }
+  }
+  if (isRecord(payload)) {
+    for (const value of Object.values(payload)) {
+      const found = replicateOutputUrl(value);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function replicatePredictionOutput(payload: unknown) {
+  if (!isRecord(payload)) return null;
+  return replicateOutputUrl(payload.output);
+}
+
+async function requestGeneratedImageFromReplicate(prompt: string) {
+  const token = process.env.REPLICATE_API_TOKEN?.trim();
+  if (!token) return null;
+
+  const model = getReplicateImageModel();
+  const [owner, name] = model.split("/");
+  if (!owner || !name) return null;
+
+  const response = await fetch(`https://api.replicate.com/v1/models/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/predictions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      prefer: "wait=60"
+    },
+    body: JSON.stringify({
+      input: {
+        prompt,
+        aspect_ratio: "4:3",
+        output_format: "jpg",
+        output_quality: 88
+      }
+    })
+  });
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    console.warn(`Replicate recipe image generation failed: ${response.status}`);
+    return null;
+  }
+
+  return replicatePredictionOutput(payload);
+}
+
+async function generateRecipeImageWithReplicate(context: RecipeImageContext) {
+  const cacheKey = recipeImageCacheKey(context, "replicate");
+  if (generatedImageCache.has(cacheKey)) {
+    return generatedImageCache.get(cacheKey) ?? null;
+  }
+
+  const promptPlan = strengthenLocalImagePromptPlan(context, fallbackLocalImagePromptPlan(context));
+  const imageUrl = await requestGeneratedImageFromReplicate(promptPlan.prompt);
+  if (!imageUrl) return null;
+
+  const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
+  const image: RecipeImage = {
+    url: imageUrl,
+    sourceTitle: `${title} Replicate generated reference`,
+    sourceUrl: `https://replicate.com/${getReplicateImageModel()}`,
+    provider: "replicate",
+    aiSelected: true,
+    aiReason: `Generated from the recipe context with Replicate ${getReplicateImageModel()}.`
+  };
+  setGeneratedImageCache(cacheKey, image);
+  return image;
+}
+
 async function generateRecipeImage(context: RecipeImageContext) {
-  if (getRecipeImageProvider() === "gemini") return generateRecipeImageWithGemini(context);
+  const provider = getRecipeImageProvider();
+  if (provider === "disabled") return null;
+  if (provider === "gemini") return generateRecipeImageWithGemini(context);
+  if (provider === "replicate") return generateRecipeImageWithReplicate(context);
   return generateRecipeImageWithLocalProvider(context);
 }
 
@@ -1068,7 +1323,7 @@ function filterExcludedCandidates(candidates: RecipeImageCandidate[], context: R
 }
 
 async function collectImageCandidates(queries: string[]) {
-  const mealDbCandidates = (await Promise.all(queries.map((query) => findMealDbImages(query)))).flat();
+  const mealDbCandidates = await collectMealDbCandidates(queries);
   let candidates = dedupeCandidates(mealDbCandidates);
   if (candidates.length >= 4) return candidates.slice(0, 8);
 
@@ -1078,6 +1333,10 @@ async function collectImageCandidates(queries: string[]) {
 
   const wikimediaCandidates = (await Promise.all(queries.map((query) => findWikimediaImages(query)))).flat();
   return dedupeCandidates([...candidates, ...wikimediaCandidates]).slice(0, 8);
+}
+
+async function collectMealDbCandidates(queries: string[]) {
+  return (await Promise.all(queries.map((query) => findMealDbImages(query)))).flat();
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1280,6 +1539,30 @@ async function resolveRecipeImage(context: RecipeImageContext, useAi: boolean) {
   return candidates.length > 0 ? toRecipeImage(candidates[0]) : null;
 }
 
+async function resolveMealDbRecipeImage(context: RecipeImageContext, useAi: boolean) {
+  const queries = recipeContextQueries(context);
+  const candidates = filterExcludedCandidates(dedupeCandidates(await collectMealDbCandidates(queries)), context);
+  if (candidates.length === 0) return null;
+
+  if (useAi) {
+    try {
+      const aiImage = await selectImageWithGemini(context, candidates);
+      if (aiImage) return aiImage;
+    } catch (error) {
+      console.warn("AI TheMealDB image selection failed", error);
+    }
+  }
+
+  return toRecipeImage(candidates[0], useAi ? "Selected from TheMealDB as the closest matching dish image." : undefined);
+}
+
+async function resolveRecipeImageBeforeGeneration(context: RecipeImageContext) {
+  const mealDbImage = await resolveMealDbRecipeImage(context, true);
+  if (mealDbImage) return mealDbImage;
+
+  return resolveRecipeImage(context, true);
+}
+
 function queryCandidates(request: NextRequest) {
   return uniqueCleanQueries(request.nextUrl.searchParams
     .getAll("q")
@@ -1307,7 +1590,8 @@ function contextFromBody(body: unknown): RecipeImageContext {
 
 export async function GET(request: NextRequest) {
   try {
-    const image = await resolveRecipeImage({ queries: queryCandidates(request) }, false);
+    const context = { queries: queryCandidates(request) };
+    const image = await findApprovedCachedRecipeImage(context) ?? await resolveRecipeImage(context, false);
     return jsonOk({ image });
   } catch (error) {
     console.warn("Recipe image lookup failed", error);
@@ -1318,7 +1602,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = contextFromBody(await request.json());
-    const image = await generateRecipeImage(context);
+    const image =
+      await findApprovedCachedRecipeImage(context) ??
+      await resolveRecipeImageBeforeGeneration(context) ??
+      await generateRecipeImage(context);
     return jsonOk({ image });
   } catch (error) {
     console.warn("AI recipe image generation failed", error);

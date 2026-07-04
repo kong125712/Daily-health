@@ -8,18 +8,26 @@ datasource db {
 }
 
 model Profile {
-  id          String           @id
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  settings    AppSettings?
-  scans       IngredientScan[]
-  recipes     Recipe[]
-  foodLogs    FoodLog[]
-  water       WaterEntry[]
-  waterTargets WaterTarget[]
-  exercise    ExerciseLog[]
-  sleep       SleepLog[]
-  weight      WeightLog[]
+  id                 String           @id
+  displayName        String?
+  gender             String?
+  birthYear          Int?
+  heightCm           Float?
+  weightKg           Float?
+  activityLevel      String           @default("sedentary")
+  calorieGoal        String           @default("maintain")
+  dailyCalorieTarget Int?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  settings           AppSettings?
+  scans              IngredientScan[]
+  recipes            Recipe[]
+  foodLogs           FoodLog[]
+  water              WaterEntry[]
+  waterTargets       WaterTarget[]
+  exercise           ExerciseLog[]
+  sleep              SleepLog[]
+  weight             WeightLog[]
 }
 
 model AppSettings {
@@ -43,6 +51,7 @@ model IngredientScan {
   overallConfidence String
   uncertaintyNoteEn String
   uncertaintyNoteZh String
+  confirmedAt       DateTime?
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   profile           Profile                @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -94,6 +103,14 @@ model Recipe {
   cuisineStyle                String
   difficulty                  String
   referenceImageQuery         String?
+  referenceImageUrl           String?
+  referenceImageSourceTitle   String?
+  referenceImageSourceUrl     String?
+  referenceImageProvider      String?
+  referenceImageAiReason      String?
+  referenceImageCropXPercent  Float?
+  referenceImageCropYPercent  Float?
+  referenceImageCropZoom      Float?
   estimatedCookingMinutes     Int
   servings                    Int
   estimatedCaloriesPerServing Int?
@@ -113,6 +130,28 @@ model Recipe {
   @@index([sourceScanId])
   @@index([isFavorite])
   @@index([createdAt])
+}
+
+model RecipeImageCache {
+  id             String   @id @default(cuid())
+  cacheKey       String   @unique
+  query          String
+  url            String
+  sourceTitle    String
+  sourceUrl      String
+  provider       String
+  cropXPercent   Float?
+  cropYPercent   Float?
+  cropZoom       Float?
+  aiSelected     Boolean  @default(false)
+  aiReason       String?
+  hits           Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastUsedAt     DateTime @default(now())
+
+  @@index([query])
+  @@index([lastUsedAt])
 }
 
 model RecipeTranslation {
@@ -189,6 +228,9 @@ model FoodLog {
   nameEn       String
   nameZh       String?
   calories     Int?
+  proteinGrams Float?
+  carbsGrams   Float?
+  fatGrams     Float?
   notes        String?
   sourceType   String
   createdAt    DateTime @default(now())

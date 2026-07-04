@@ -10,7 +10,60 @@ export type FoodLogSource = "manual" | "ingredient_scan" | "recipe";
 
 export type SleepQuality = "poor" | "average" | "good";
 
-export type Difficulty = "easy" | "medium";
+export type Difficulty = "easy" | "medium" | "hard";
+
+export type ProfileGender = "male" | "female" | "other";
+
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
+
+export type CalorieGoal = "lose" | "maintain" | "gain";
+
+export type ServiceStatusState = "ok" | "warning" | "error";
+
+export type ServiceStatusItem = {
+  id: "app" | "database" | "ai" | "nutrition" | "recipeImages" | "epicure" | "mealdb" | "localImage";
+  state: ServiceStatusState;
+  titleEn: string;
+  titleZh: string;
+  summaryEn: string;
+  summaryZh: string;
+  detailsEn: string[];
+  detailsZh: string[];
+  latencyMs?: number;
+};
+
+export type ServiceStatusResponse = {
+  checkedAt: string;
+  overall: ServiceStatusState;
+  items: ServiceStatusItem[];
+};
+
+export type UserProfileView = {
+  id: string;
+  displayName: string | null;
+  gender: ProfileGender | null;
+  birthYear: number | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  activityLevel: ActivityLevel;
+  calorieGoal: CalorieGoal;
+  dailyCalorieTarget: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CalorieGuidanceView = {
+  dailyTotal: number;
+  targetCalories: number | null;
+  remainingCalories: number | null;
+  excessCalories: number | null;
+  isOverTarget: boolean;
+  profileComplete: boolean;
+  calculationNoteEn: string;
+  calculationNoteZh: string;
+  adviceEn: string[];
+  adviceZh: string[];
+};
 
 export type RecognizedIngredientInput = {
   normalizedName: string;
@@ -36,6 +89,7 @@ export type IngredientScanView = {
   overallConfidence: IngredientConfidence;
   uncertaintyNoteEn: string;
   uncertaintyNoteZh: string;
+  confirmedAt: string | null;
   createdAt: string;
   ingredients: Array<RecognizedIngredientInput & { id: string; position: number }>;
 };
@@ -57,7 +111,7 @@ export type EpicurePairingView = EpicurePairingInput & {
 export type RecipePreferenceInput = {
   cuisine: string;
   cookingTime: string;
-  difficulty: "easy" | "medium" | "no_preference";
+  difficulty: "easy" | "medium" | "hard" | "no_preference";
   dietaryPreference: string;
   equipment: string;
   recognizedOnly: boolean;
@@ -104,6 +158,26 @@ export type GeneratedRecipeInput = {
   }>;
 };
 
+export type RecipeReferenceImageView = {
+  url: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  provider: "ai" | "gemini" | "local" | "replicate" | "themealdb" | "wikipedia" | "wikimedia";
+  crop?: {
+    xPercent: number;
+    yPercent: number;
+    zoom: number;
+  };
+  aiSelected?: boolean;
+  aiReason?: string;
+};
+
+export type AvoidRecipeInput = {
+  title: string;
+  cuisineStyle?: string | null;
+  referenceImageQuery?: string | null;
+};
+
 export type RecipeView = {
   id: string;
   profileId: string;
@@ -111,6 +185,7 @@ export type RecipeView = {
   cuisineStyle: string;
   difficulty: Difficulty;
   referenceImageQuery: string | null;
+  referenceImage: RecipeReferenceImageView | null;
   estimatedCookingMinutes: number;
   servings: number;
   estimatedCaloriesPerServing: number | null;
@@ -132,10 +207,38 @@ export type FoodLogView = {
   nameEn: string;
   nameZh: string | null;
   calories: number | null;
+  proteinGrams: number | null;
+  carbsGrams: number | null;
+  fatGrams: number | null;
   notes: string | null;
   sourceType: FoodLogSource;
   createdAt: string;
   updatedAt: string;
+};
+
+export type NutritionSummaryView = {
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
+  proteinCalories: number;
+  carbsCalories: number;
+  fatCalories: number;
+  trackedMacroCalories: number;
+  untrackedCalories: number;
+  proteinPercent: number;
+  carbsPercent: number;
+  fatPercent: number;
+  trackedEntries: number;
+};
+
+export type FoodNutritionEstimate = {
+  calories: number | null;
+  proteinGrams: number | null;
+  carbsGrams: number | null;
+  fatGrams: number | null;
+  confidence: IngredientConfidence;
+  notesEn: string;
+  notesZh: string;
 };
 
 export type WaterSummary = {

@@ -1,5 +1,6 @@
 import type {
   AppLocale,
+  AvoidRecipeInput,
   EpicurePairingInput,
   RecognizedIngredientInput,
   RecipePreferenceInput
@@ -24,6 +25,7 @@ export async function generateRecipesWithOpenAI(input: {
   ingredients: RecognizedIngredientInput[];
   pairings: EpicurePairingInput[];
   preferences: RecipePreferenceInput;
+  avoidRecipes?: AvoidRecipeInput[];
 }) {
   if (provider === "gemini") {
     const { generateRecipesWithGeminiImpl } = await import("./geminiImpl");
@@ -31,4 +33,19 @@ export async function generateRecipesWithOpenAI(input: {
   }
   const { generateRecipesWithOpenAIImpl } = await import("./openaiImpl");
   return generateRecipesWithOpenAIImpl(input);
+}
+
+export async function estimateFoodNutrition(input: {
+  locale: AppLocale;
+  nameEn: string;
+  nameZh?: string;
+  calories?: number | null;
+  notes?: string | null;
+}) {
+  if (provider === "gemini") {
+    const { estimateFoodNutritionWithGeminiImpl } = await import("./geminiImpl");
+    return estimateFoodNutritionWithGeminiImpl(input);
+  }
+  const { estimateFoodNutritionWithOpenAIImpl } = await import("./openaiImpl");
+  return estimateFoodNutritionWithOpenAIImpl(input);
 }

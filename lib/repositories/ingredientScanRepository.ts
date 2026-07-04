@@ -97,6 +97,7 @@ export async function updateRecognizedIngredients(input: {
   profileId: string;
   scanId: string;
   ingredients: RecognizedIngredientInput[];
+  confirmed?: boolean;
 }) {
   const scan = await prisma.ingredientScan.findFirst({
     where: { id: input.scanId, profileId: input.profileId }
@@ -126,7 +127,15 @@ export async function updateRecognizedIngredients(input: {
     });
   });
 
-  return serializeScan(updated);
+  const confirmed = await prisma.ingredientScan.update({
+    where: { id: updated.id },
+    data: {
+      confirmedAt: input.confirmed ? new Date() : null
+    },
+    include: scanWithIngredients
+  });
+
+  return serializeScan(confirmed);
 }
 
 export async function saveEpicurePairings(input: {

@@ -4,26 +4,15 @@ import { ImageOff, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ingredientName, recipeTranslation } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
-import type { AppLocale, RecipeView } from "@/lib/types/domain";
+import type { AppLocale, RecipeReferenceImageView, RecipeView } from "@/lib/types/domain";
 
 type RecipeReferenceImageProps = {
   recipe: RecipeView;
   compact?: boolean;
+  onResolved?: (image: RecipeReferenceImageView | null) => void;
 };
 
-type ResolvedRecipeImage = {
-  url: string;
-  sourceTitle: string;
-  sourceUrl: string;
-  provider: "ai" | "local" | "themealdb" | "wikipedia" | "wikimedia";
-  crop?: {
-    xPercent: number;
-    yPercent: number;
-    zoom: number;
-  };
-  aiSelected?: boolean;
-  aiReason?: string;
-};
+type ResolvedRecipeImage = RecipeReferenceImageView;
 
 type RecipeImageResponse = {
   image: ResolvedRecipeImage | null;
@@ -161,10 +150,11 @@ async function fetchRecipeImage(
   return data.image;
 }
 
-export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenceImageProps) {
+export function RecipeReferenceImage({ recipe, compact = false, onResolved }: RecipeReferenceImageProps) {
   const { locale, t } = useApp();
   const translation = recipeTranslation(recipe, locale);
   const title = translation?.title ?? recipe.referenceImageQuery ?? recipe.cuisineStyle;
+  const pinnedImage = recipe.referenceImage;
   const imageInfo = useMemo(() => recipeImageInfo(recipe, locale), [locale, recipe]);
   const queryKey = JSON.stringify(imageInfo);
   const [status, setStatus] = useState<ImageStatus>("loading");
@@ -173,13 +163,27 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
 
   useEffect(() => {
     let isActive = true;
+
+    if (pinnedImage) {
+      releaseImage(recipe.id, claimedImageRef.current);
+      claimedImageRef.current = null;
+      setImage(pinnedImage);
+      setStatus("ready");
+      onResolved?.(pinnedImage);
+      return () => {
+        isActive = false;
+      };
+    }
+
     releaseImage(recipe.id, claimedImageRef.current);
     claimedImageRef.current = null;
     setStatus("loading");
     setImage(null);
+    onResolved?.(null);
 
     if (imageInfo.queries.length === 0) {
       setStatus("empty");
+      onResolved?.(null);
       return () => {
         isActive = false;
       };
@@ -194,6 +198,7 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
       if (!resolvedImage) {
         setImage(null);
         setStatus("empty");
+        onResolved?.(null);
         return;
       }
 
@@ -204,6 +209,7 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
         };
         setImage(resolvedImage);
         setStatus("ready");
+        onResolved?.(resolvedImage);
         return;
       }
 
@@ -219,11 +225,13 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
         };
         setImage(retryImage);
         setStatus("ready");
+        onResolved?.(retryImage);
         return;
       }
 
       setImage(null);
       setStatus("empty");
+      onResolved?.(null);
     }
 
     void loadImage()
@@ -231,6 +239,7 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
         if (!isActive) return;
         setImage(null);
         setStatus("empty");
+        onResolved?.(null);
       });
 
     return () => {
@@ -238,7 +247,7 @@ export function RecipeReferenceImage({ recipe, compact = false }: RecipeReferenc
       releaseImage(recipe.id, claimedImageRef.current);
       claimedImageRef.current = null;
     };
-  }, [locale, queryKey, recipe, imageInfo.queries.length]);
+  }, [locale, onResolved, pinnedImage, queryKey, recipe, imageInfo.queries.length]);
 
   return (
     <div className={`relative overflow-hidden rounded-md bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-emerald-950 dark:via-slate-900 dark:to-amber-950 ${compact ? "aspect-[16/9]" : "aspect-[4/3]"}`}>

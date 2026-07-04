@@ -1,11 +1,11 @@
 "use client";
 
-import { Clipboard, Eye, Heart, RefreshCw, Utensils } from "lucide-react";
-import { useState } from "react";
+import { Clipboard, Eye, Heart, Link2, RefreshCw, Utensils } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/client/api";
 import { ingredientName, isoToday, recipeTranslation } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
-import type { MealCategory, RecipeView } from "@/lib/types/domain";
+import type { MealCategory, RecipeReferenceImageView, RecipeView } from "@/lib/types/domain";
 import { RecipeDetailModal } from "./RecipeDetailModal";
 import { RecipeReferenceImage } from "./RecipeReferenceImage";
 
@@ -21,7 +21,17 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
   const [open, setOpen] = useState(false);
   const [mealCategory, setMealCategory] = useState<MealCategory>("dinner");
   const [calories, setCalories] = useState(recipe.estimatedCaloriesPerServing?.toString() ?? "");
+  const [currentReferenceImage, setCurrentReferenceImage] = useState<RecipeReferenceImageView | null>(recipe.referenceImage);
+  const [bindingImage, setBindingImage] = useState(false);
   const translation = recipeTranslation(recipe, locale);
+  const boundReferenceImage = currentReferenceImage ?? recipe.referenceImage;
+  const displayRecipe = useMemo(
+    () => boundReferenceImage && !recipe.referenceImage ? { ...recipe, referenceImage: boundReferenceImage } : recipe,
+    [boundReferenceImage, recipe]
+  );
+  const handleReferenceImageResolved = useCallback((image: RecipeReferenceImageView | null) => {
+    setCurrentReferenceImage(image);
+  }, []);
 
   async function saveRecipe() {
     if (!profileId) return;
@@ -30,12 +40,32 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
         method: "PATCH",
         profileId,
         locale,
-        body: { profileId, isFavorite: true }
+        body: { profileId, isFavorite: true, referenceImage: boundReferenceImage }
       });
       onChanged(response.recipe);
-      onToast(t("recipes.favorited"), "success");
+      onToast(t(boundReferenceImage ? "recipes.favoritedWithImage" : "recipes.favorited"), "success");
     } catch (error) {
       onToast(error instanceof Error ? error.message : t("common.error"), "error");
+    }
+  }
+
+  async function bindReferenceImage() {
+    if (!profileId || !boundReferenceImage || recipe.referenceImage) return;
+    setBindingImage(true);
+    try {
+      const response = await apiFetch<{ recipe: RecipeView }>(`/api/recipes/${recipe.id}/reference-image`, {
+        method: "PATCH",
+        profileId,
+        locale,
+        body: { profileId, referenceImage: boundReferenceImage }
+      });
+      setCurrentReferenceImage(response.recipe.referenceImage);
+      onChanged(response.recipe);
+      onToast(t("recipes.imageBoundToast"), "success");
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : t("common.error"), "error");
+    } finally {
+      setBindingImage(false);
     }
   }
 
@@ -69,7 +99,7 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
 
   return (
     <article className="rounded-md border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-700 dark:bg-slate-900">
-      <RecipeReferenceImage recipe={recipe} compact />
+      <RecipeReferenceImage recipe={displayRecipe} compact onResolved={handleReferenceImageResolved} />
       <div className="mt-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-slate-950 dark:text-white">{translation?.title}</h3>
@@ -89,6 +119,15 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
         <button className="btn-primary" type="button" onClick={() => void saveRecipe()} disabled={recipe.isFavorite}>
           <Heart className="h-4 w-4" aria-hidden="true" />
           {recipe.isFavorite ? t("common.saved") : t("recipes.saveRecipe")}
+        </button>
+        <button
+          className="btn-secondary"
+          type="button"
+          onClick={() => void bindReferenceImage()}
+          disabled={!boundReferenceImage || Boolean(recipe.referenceImage) || bindingImage}
+        >
+          <Link2 className="h-4 w-4" aria-hidden="true" />
+          {recipe.referenceImage ? t("recipes.imageBound") : t("recipes.bindImage")}
         </button>
         <button className="btn-secondary" type="button" onClick={() => void copyIngredients()}>
           <Clipboard className="h-4 w-4" aria-hidden="true" />
@@ -124,7 +163,7 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
         </button>
       </div>
       <p className="mt-4 text-xs leading-5 text-slate-500">{translation?.nutritionDisclaimer || t("recipes.disclaimer")}</p>
-      <RecipeDetailModal recipe={open ? recipe : null} onClose={() => setOpen(false)} />
+      <RecipeDetailModal recipe={open ? displayRecipe : null} onClose={() => setOpen(false)} />
     </article>
   );
 }

@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import type { ActivityLevel, CalorieGoal, ProfileGender } from "@/lib/types/domain";
+import { serializeProfile } from "@/lib/repositories/serializers";
 import { profileIdSchema } from "@/lib/validation/schemas";
 
 export async function ensureProfile(profileId: string) {
@@ -22,9 +24,44 @@ export async function ensureProfile(profileId: string) {
   });
 
   return {
-    profile: await prisma.profile.findUniqueOrThrow({ where: { id } }),
+    profile: serializeProfile(await prisma.profile.findUniqueOrThrow({ where: { id } })),
     settings
   };
+}
+
+export async function getProfile(profileId: string) {
+  const result = await ensureProfile(profileId);
+  return result.profile;
+}
+
+export async function updateProfile(input: {
+  profileId: string;
+  displayName?: string | null;
+  gender?: ProfileGender | null;
+  birthYear?: number | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  activityLevel?: ActivityLevel;
+  calorieGoal?: CalorieGoal;
+  dailyCalorieTarget?: number | null;
+}) {
+  await ensureProfile(input.profileId);
+
+  const profile = await prisma.profile.update({
+    where: { id: input.profileId },
+    data: {
+      displayName: input.displayName,
+      gender: input.gender,
+      birthYear: input.birthYear,
+      heightCm: input.heightCm,
+      weightKg: input.weightKg,
+      activityLevel: input.activityLevel,
+      calorieGoal: input.calorieGoal,
+      dailyCalorieTarget: input.dailyCalorieTarget
+    }
+  });
+
+  return serializeProfile(profile);
 }
 
 export async function deleteProfile(profileId: string) {

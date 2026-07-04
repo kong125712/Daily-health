@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
       locale: body.locale,
       ingredients,
       pairings: epicure.pairings,
-      preferences: body.preferences
+      preferences: body.preferences,
+      avoidRecipes: body.avoidRecipes
     });
 
     if (!generated.ok) {

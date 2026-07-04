@@ -18,6 +18,9 @@ export async function createFoodLog(input: {
   nameEn: string;
   nameZh?: string;
   calories?: number | null;
+  proteinGrams?: number | null;
+  carbsGrams?: number | null;
+  fatGrams?: number | null;
   notes?: string | null;
   sourceType: "manual" | "ingredient_scan" | "recipe";
 }) {
@@ -30,6 +33,9 @@ export async function createFoodLog(input: {
       nameEn: input.nameEn,
       nameZh: input.nameZh,
       calories: input.calories,
+      proteinGrams: input.proteinGrams,
+      carbsGrams: input.carbsGrams,
+      fatGrams: input.fatGrams,
       notes: input.notes,
       sourceType: input.sourceType
     }
@@ -45,6 +51,9 @@ export async function updateFoodLog(input: {
   nameEn: string;
   nameZh?: string;
   calories?: number | null;
+  proteinGrams?: number | null;
+  carbsGrams?: number | null;
+  fatGrams?: number | null;
   notes?: string | null;
 }) {
   const existing = await prisma.foodLog.findFirst({
@@ -61,6 +70,9 @@ export async function updateFoodLog(input: {
       nameEn: input.nameEn,
       nameZh: input.nameZh,
       calories: input.calories,
+      proteinGrams: input.proteinGrams,
+      carbsGrams: input.carbsGrams,
+      fatGrams: input.fatGrams,
       notes: input.notes
     }
   });

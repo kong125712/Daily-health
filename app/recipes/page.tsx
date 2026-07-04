@@ -1,11 +1,11 @@
 "use client";
 
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client/api";
 import { ingredientName } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
-import type { IngredientScanView, RecipePreferenceInput, RecipeView } from "@/lib/types/domain";
+import type { AvoidRecipeInput, IngredientScanView, RecipePreferenceInput, RecipeView } from "@/lib/types/domain";
 import { EpicurePairingBadge } from "@/components/recipes/EpicurePairingBadge";
 import { defaultPreferences, RecipePreferenceForm } from "@/components/recipes/RecipePreferenceForm";
 import { RecipeCard } from "@/components/recipes/RecipeCard";
@@ -28,6 +28,17 @@ function manualIngredients(text: string) {
       confidence: "medium" as const,
       notes: ""
     }));
+}
+
+function recipeAvoidanceSummary(recipe: RecipeView, locale: string): AvoidRecipeInput {
+  const localized = recipe.translations.find((translation) => translation.locale === locale);
+  const english = recipe.translations.find((translation) => translation.locale === "en");
+  const fallback = recipe.translations[0];
+  return {
+    title: localized?.title ?? english?.title ?? fallback?.title ?? recipe.referenceImageQuery ?? recipe.cuisineStyle,
+    cuisineStyle: recipe.cuisineStyle,
+    referenceImageQuery: recipe.referenceImageQuery
+  };
 }
 
 export default function RecipesPage() {
@@ -75,12 +86,12 @@ export default function RecipesPage() {
     });
   }, [locale, profileId, scanId, sourceRecipeId]);
 
-  async function generate(overrideRecipeId?: string) {
+  async function generate(options: { overrideRecipeId?: string; refresh?: boolean } = {}) {
     if (!profileId) return;
     setLoading(true);
     try {
       const selectedScanId = sourceMode === "latest" ? scans[0]?.id : sourceMode === "previous" ? scanId : undefined;
-      const selectedRecipeId = overrideRecipeId ?? (sourceMode === "recipe" ? sourceRecipeId : undefined);
+      const selectedRecipeId = options.overrideRecipeId ?? (sourceMode === "recipe" ? sourceRecipeId : undefined);
       const response = await apiFetch<{ recipes: RecipeView[]; epicureStatus: EpicureStatus }>("/api/generate-recipes", {
         method: "POST",
         profileId,
@@ -90,8 +101,10 @@ export default function RecipesPage() {
           locale,
           scanId: selectedScanId,
           sourceRecipeId: selectedRecipeId,
-          manualIngredients: sourceMode === "manual" && !overrideRecipeId ? manualIngredients(manualText) : [],
-          preferences
+          manualIngredients: sourceMode === "manual" && !options.overrideRecipeId ? manualIngredients(manualText) : [],
+          preferences,
+          avoidRecipes: options.refresh ? recipes.map((recipe) => recipeAvoidanceSummary(recipe, locale)) : [],
+          refreshNonce: options.refresh ? `${Date.now()}` : undefined
         }
       });
       setRecipes(response.recipes);
@@ -149,10 +162,18 @@ export default function RecipesPage() {
       </section>
       <RecipePreferenceForm value={preferences} onChange={setPreferences} />
       <EpicurePairingBadge status={epicureStatus} />
-      <button className="btn-primary self-start" type="button" onClick={() => void generate()} disabled={loading}>
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
-        {t("recipes.generate")}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary" type="button" onClick={() => void generate()} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+          {t("recipes.generate")}
+        </button>
+        {recipes.length > 0 ? (
+          <button className="btn-secondary" type="button" onClick={() => void generate({ refresh: true })} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+            {t("recipes.refresh")}
+          </button>
+        ) : null}
+      </div>
       {recipes.length === 0 && !loading ? <EmptyState message={t("recipes.noRecipes")} /> : null}
       <section className="grid gap-4 xl:grid-cols-3">
         {recipes.map((recipe) => (
@@ -160,7 +181,7 @@ export default function RecipesPage() {
             key={recipe.id}
             recipe={recipe}
             onChanged={(updated) => setRecipes((current) => current.map((item) => (item.id === updated.id ? updated : item)))}
-            onSimilar={(selected) => void generate(selected.id)}
+            onSimilar={(selected) => void generate({ overrideRecipeId: selected.id })}
             onToast={showToast}
           />
         ))}

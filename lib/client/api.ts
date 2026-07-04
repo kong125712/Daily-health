@@ -2,17 +2,9 @@
 
 import type { AppLocale } from "@/lib/types/domain";
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue | undefined };
-
 type ApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
-  body?: JsonValue;
+  body?: unknown;
   profileId?: string | null;
   locale?: AppLocale;
 };

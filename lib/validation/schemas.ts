@@ -8,9 +8,24 @@ export const profileIdSchema = z.string().min(8).max(128);
 export const mealCategorySchema = z.enum(["breakfast", "lunch", "dinner", "snack"]);
 export const foodLogSourceSchema = z.enum(["manual", "ingredient_scan", "recipe"]);
 export const sleepQualitySchema = z.enum(["poor", "average", "good"]);
+export const profileGenderSchema = z.enum(["male", "female", "other"]);
+export const activityLevelSchema = z.enum(["sedentary", "light", "moderate", "active", "very_active"]);
+export const calorieGoalSchema = z.enum(["lose", "maintain", "gain"]);
 
 export const profileRequestSchema = z.object({
   profileId: profileIdSchema
+});
+
+export const profileUpdateSchema = z.object({
+  profileId: profileIdSchema,
+  displayName: z.string().trim().max(80).nullable().optional(),
+  gender: profileGenderSchema.nullable().optional(),
+  birthYear: z.number().int().min(1900).max(new Date().getFullYear()).nullable().optional(),
+  heightCm: z.number().min(80).max(250).nullable().optional(),
+  weightKg: z.number().min(20).max(400).nullable().optional(),
+  activityLevel: activityLevelSchema.optional(),
+  calorieGoal: calorieGoalSchema.optional(),
+  dailyCalorieTarget: z.number().int().min(800).max(6000).nullable().optional()
 });
 
 export const settingsUpdateSchema = z.object({
@@ -47,13 +62,14 @@ export const analyzeIngredientsSchema = z.object({
 
 export const updateScanSchema = z.object({
   profileId: profileIdSchema,
-  ingredients: z.array(recognizedIngredientSchema).max(30)
+  ingredients: z.array(recognizedIngredientSchema).max(30),
+  confirmed: z.boolean().optional()
 });
 
 export const recipePreferenceSchema = z.object({
   cuisine: z.string().trim().min(1).max(60),
   cookingTime: z.string().trim().min(1).max(60),
-  difficulty: z.enum(["easy", "medium", "no_preference"]),
+  difficulty: z.enum(["easy", "medium", "hard", "no_preference"]),
   dietaryPreference: z.string().trim().min(1).max(80),
   equipment: z.string().trim().min(1).max(80),
   recognizedOnly: z.boolean(),
@@ -61,9 +77,32 @@ export const recipePreferenceSchema = z.object({
   allowOptionalExtras: z.boolean()
 });
 
+export const recipeReferenceImageSchema = z.object({
+  url: z.union([
+    z.string().startsWith("data:image/").max(12_000_000),
+    z.string().url().max(2_000)
+  ]),
+  sourceTitle: z.string().trim().min(1).max(240),
+  sourceUrl: z.string().trim().min(1).max(2_000),
+  provider: z.enum(["ai", "gemini", "local", "replicate", "themealdb", "wikipedia", "wikimedia"]),
+  crop: z.object({
+    xPercent: z.number().min(0).max(100),
+    yPercent: z.number().min(0).max(100),
+    zoom: z.number().min(1).max(2.8)
+  }).optional(),
+  aiSelected: z.boolean().optional(),
+  aiReason: z.string().trim().max(500).optional()
+});
+
+export const avoidRecipeSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  cuisineStyle: z.string().trim().max(100).nullable().optional(),
+  referenceImageQuery: z.string().trim().max(140).nullable().optional()
+});
+
 export const generatedRecipeSchema = z.object({
   cuisineStyle: z.string().trim().min(1).max(80),
-  difficulty: z.enum(["easy", "medium"]),
+  difficulty: z.enum(["easy", "medium", "hard"]),
   referenceImageQuery: z.string().trim().min(1).max(120).optional(),
   estimatedCookingMinutes: z.number().int().min(1).max(240),
   servings: z.number().int().min(1).max(12),
@@ -119,7 +158,9 @@ export const generateRecipesRequestSchema = z.object({
     confidence: confidenceSchema.default("medium"),
     notes: z.string().trim().max(300).default("")
   })).max(30).default([]),
-  preferences: recipePreferenceSchema
+  preferences: recipePreferenceSchema,
+  avoidRecipes: z.array(avoidRecipeSchema).max(12).default([]),
+  refreshNonce: z.string().trim().max(80).optional()
 });
 
 export const foodLogInputSchema = z.object({
@@ -131,8 +172,30 @@ export const foodLogInputSchema = z.object({
   nameEn: z.string().trim().min(1).max(160),
   nameZh: z.string().trim().max(160).optional(),
   calories: z.number().int().min(0).max(5000).nullable().optional(),
+  proteinGrams: z.number().min(0).max(1000).nullable().optional(),
+  carbsGrams: z.number().min(0).max(1000).nullable().optional(),
+  fatGrams: z.number().min(0).max(1000).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
   sourceType: foodLogSourceSchema.default("manual")
+});
+
+export const foodNutritionEstimateRequestSchema = z.object({
+  profileId: profileIdSchema,
+  locale: appLocaleSchema.default("en"),
+  nameEn: z.string().trim().min(1).max(160),
+  nameZh: z.string().trim().max(160).optional(),
+  calories: z.number().int().min(0).max(5000).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional()
+});
+
+export const foodNutritionEstimateSchema = z.object({
+  calories: z.number().int().min(0).max(5000).nullable(),
+  proteinGrams: z.number().min(0).max(1000).nullable(),
+  carbsGrams: z.number().min(0).max(1000).nullable(),
+  fatGrams: z.number().min(0).max(1000).nullable(),
+  confidence: confidenceSchema,
+  notesEn: z.string().trim().max(300).default(""),
+  notesZh: z.string().trim().max(300).default("")
 });
 
 export const waterEntrySchema = z.object({
@@ -175,4 +238,9 @@ export const weightLogInputSchema = z.object({
 export const deleteByIdSchema = z.object({
   profileId: profileIdSchema,
   id: z.string().cuid()
+});
+
+export const backupImportRequestSchema = z.object({
+  profileId: profileIdSchema,
+  backup: z.unknown()
 });

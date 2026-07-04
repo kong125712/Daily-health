@@ -3,10 +3,13 @@
 import { Activity, Droplets, Moon, Scale, Utensils } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client/api";
-import { isoToday, sleepQualityKey } from "@/lib/client/display";
+import { isoToday, recentIsoDates, sleepQualityKey } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
-import type { DailyHistoryView, SleepLogView, WeightLogView } from "@/lib/types/domain";
+import { calculateHealthScore } from "@/lib/services/healthScore";
+import type { DailyHistoryView, SleepLogView, UserProfileView, WeightLogView } from "@/lib/types/domain";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
+import { HealthScorePanel } from "@/components/dashboard/HealthScorePanel";
+import { HealthTrendChart, type HealthTrendPoint } from "@/components/dashboard/HealthTrendChart";
 import { WeeklySummary } from "@/components/dashboard/WeeklySummary";
 import { WeightTrendChart } from "@/components/dashboard/WeightTrendChart";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -14,23 +17,30 @@ import { LoadingState } from "@/components/shared/LoadingState";
 export default function HomePage() {
   const { profileId, locale, t } = useApp();
   const [history, setHistory] = useState<DailyHistoryView | null>(null);
+  const [profile, setProfile] = useState<UserProfileView | null>(null);
   const [latestSleep, setLatestSleep] = useState<SleepLogView | null>(null);
   const [latestWeight, setLatestWeight] = useState<WeightLogView | null>(null);
   const [weights, setWeights] = useState<WeightLogView[]>([]);
+  const [recentHistories, setRecentHistories] = useState<DailyHistoryView[]>([]);
   const [loading, setLoading] = useState(true);
   const today = isoToday();
 
   useEffect(() => {
     if (!profileId) return;
     setLoading(true);
+    const dates = recentIsoDates(7).reverse();
     Promise.all([
-      apiFetch<{ history: DailyHistoryView }>(`/api/history/${today}`, { profileId, locale }),
+      Promise.all(dates.map((date) => apiFetch<{ history: DailyHistoryView }>(`/api/history/${date}`, { profileId, locale }))),
+      apiFetch<{ profile: UserProfileView }>("/api/profile", { profileId, locale }),
       apiFetch<{ sleep: SleepLogView | null }>("/api/sleep?latest=1", { profileId, locale }),
       apiFetch<{ weight: WeightLogView | null }>("/api/weight?latest=1", { profileId, locale }),
       apiFetch<{ weights: WeightLogView[] }>("/api/weight?recent=1", { profileId, locale })
     ])
-      .then(([historyResponse, sleepResponse, weightResponse, weightsResponse]) => {
-        setHistory(historyResponse.history);
+      .then(([historyResponses, profileResponse, sleepResponse, weightResponse, weightsResponse]) => {
+        const histories = historyResponses.map((response) => response.history);
+        setRecentHistories(histories);
+        setHistory(histories.find((item) => item.date === today) ?? histories.at(-1) ?? null);
+        setProfile(profileResponse.profile);
         setLatestSleep(sleepResponse.sleep);
         setLatestWeight(weightResponse.weight);
         setWeights(weightsResponse.weights);
@@ -46,12 +56,26 @@ export default function HomePage() {
     );
   }
 
+  const healthScore = history && profile ? calculateHealthScore({ history, profile }) : null;
+  const healthTrendPoints: HealthTrendPoint[] = profile
+    ? recentHistories.map((item) => ({
+      date: item.date,
+      score: calculateHealthScore({ history: item, profile }).score,
+      calories: item.dailyCalories,
+      waterMl: item.water.totalMl,
+      exerciseMinutes: item.exerciseMinutes,
+      sleepHours: item.sleep?.hours ?? null
+    }))
+    : [];
+
   return (
     <main className="page-shell">
       <section className="page-header">
         <h1 className="page-title">{t("dashboard.title")}</h1>
         <p className="page-subtitle">{t("dashboard.subtitle")}</p>
       </section>
+      {healthScore ? <HealthScorePanel healthScore={healthScore} /> : null}
+      {profile ? <HealthTrendChart points={healthTrendPoints} /> : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <DashboardCard
           title={t("dashboard.foodToday")}

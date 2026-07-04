@@ -1,7 +1,78 @@
 import { prisma } from "@/lib/db";
-import type { GeneratedRecipeInput, RecipeView } from "@/lib/types/domain";
+import type { GeneratedRecipeInput, RecipeReferenceImageView, RecipeView } from "@/lib/types/domain";
 import { endOfIsoDate, startOfIsoDate } from "@/lib/utils/date";
 import { recipeWithChildren, serializeRecipe } from "./serializers";
+
+function referenceImageUpdateData(referenceImage: RecipeReferenceImageView) {
+  return {
+    referenceImageUrl: referenceImage.url,
+    referenceImageSourceTitle: referenceImage.sourceTitle,
+    referenceImageSourceUrl: referenceImage.sourceUrl,
+    referenceImageProvider: referenceImage.provider,
+    referenceImageAiReason: referenceImage.aiReason ?? null,
+    referenceImageCropXPercent: referenceImage.crop?.xPercent ?? null,
+    referenceImageCropYPercent: referenceImage.crop?.yPercent ?? null,
+    referenceImageCropZoom: referenceImage.crop?.zoom ?? null
+  };
+}
+
+function normalizeImageCacheText(text: string) {
+  return text
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\b(recipe|healthy|easy|quick|simple|homemade|style|with|and|the|a|an)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .split(" ")
+    .slice(0, 8)
+    .join(" ");
+}
+
+function approvedImageCacheQuery(recipe: { referenceImageQuery: string | null; cuisineStyle: string }, referenceImage: RecipeReferenceImageView) {
+  return normalizeImageCacheText(
+    recipe.referenceImageQuery ||
+      referenceImage.sourceTitle ||
+      recipe.cuisineStyle
+  );
+}
+
+async function cacheApprovedReferenceImage(recipe: { referenceImageQuery: string | null; cuisineStyle: string }, referenceImage: RecipeReferenceImageView) {
+  const query = approvedImageCacheQuery(recipe, referenceImage);
+  if (!query || !referenceImage.url) return;
+
+  await prisma.recipeImageCache.upsert({
+    where: { cacheKey: `dish:${query}` },
+    update: {
+      query,
+      url: referenceImage.url,
+      sourceTitle: referenceImage.sourceTitle,
+      sourceUrl: referenceImage.sourceUrl,
+      provider: referenceImage.provider,
+      cropXPercent: referenceImage.crop?.xPercent ?? null,
+      cropYPercent: referenceImage.crop?.yPercent ?? null,
+      cropZoom: referenceImage.crop?.zoom ?? null,
+      aiSelected: Boolean(referenceImage.aiSelected || referenceImage.aiReason),
+      aiReason: referenceImage.aiReason ?? null,
+      lastUsedAt: new Date()
+    },
+    create: {
+      cacheKey: `dish:${query}`,
+      query,
+      url: referenceImage.url,
+      sourceTitle: referenceImage.sourceTitle,
+      sourceUrl: referenceImage.sourceUrl,
+      provider: referenceImage.provider,
+      cropXPercent: referenceImage.crop?.xPercent ?? null,
+      cropYPercent: referenceImage.crop?.yPercent ?? null,
+      cropZoom: referenceImage.crop?.zoom ?? null,
+      aiSelected: Boolean(referenceImage.aiSelected || referenceImage.aiReason),
+      aiReason: referenceImage.aiReason ?? null,
+      hits: 1,
+      lastUsedAt: new Date()
+    }
+  });
+}
 
 export async function createRecipes(input: {
   profileId: string;
@@ -119,6 +190,7 @@ export async function setRecipeFavorite(input: {
   profileId: string;
   recipeId: string;
   isFavorite: boolean;
+  referenceImage?: RecipeReferenceImageView | null;
 }) {
   const recipe = await prisma.recipe.findFirst({
     where: { id: input.recipeId, profileId: input.profileId }
@@ -128,9 +200,35 @@ export async function setRecipeFavorite(input: {
   }
   const updated = await prisma.recipe.update({
     where: { id: input.recipeId },
-    data: { isFavorite: input.isFavorite },
+    data: {
+      isFavorite: input.isFavorite,
+      ...(input.isFavorite && input.referenceImage ? referenceImageUpdateData(input.referenceImage) : {})
+    },
     include: recipeWithChildren
   });
+  if (input.isFavorite && input.referenceImage) {
+    await cacheApprovedReferenceImage(recipe, input.referenceImage);
+  }
+  return serializeRecipe(updated);
+}
+
+export async function setRecipeReferenceImage(input: {
+  profileId: string;
+  recipeId: string;
+  referenceImage: RecipeReferenceImageView;
+}) {
+  const recipe = await prisma.recipe.findFirst({
+    where: { id: input.recipeId, profileId: input.profileId }
+  });
+  if (!recipe) {
+    return null;
+  }
+  const updated = await prisma.recipe.update({
+    where: { id: input.recipeId },
+    data: referenceImageUpdateData(input.referenceImage),
+    include: recipeWithChildren
+  });
+  await cacheApprovedReferenceImage(recipe, input.referenceImage);
   return serializeRecipe(updated);
 }
 

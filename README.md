@@ -64,14 +64,21 @@ DATABASE_URL="file:./daily-health.db"
 AI_PROVIDER=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.1-flash-lite
 GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
 RECIPE_IMAGE_PROVIDER=local
+REPLICATE_API_TOKEN=
+REPLICATE_IMAGE_MODEL=black-forest-labs/flux-schnell
+THEMEALDB_API_KEY=1
 LOCAL_IMAGE_API=comfyui
 COMFYUI_URL=http://127.0.0.1:8188
 COMFYUI_CHECKPOINT=
 COMFYUI_IMAGE_WIDTH=768
 COMFYUI_IMAGE_HEIGHT=576
-COMFYUI_STEPS=18
+COMFYUI_STEPS=
+COMFYUI_CFG_SCALE=
+COMFYUI_SAMPLER=
+COMFYUI_SCHEDULER=
 EPICURE_MCP_URL=https://epicure-mcp.kaikaku.ai/mcp
 ```
 
@@ -81,7 +88,15 @@ Set `AI_PROVIDER` as `openai` OR `gemini` to select the ai provider.
 
 Set `OPENAI_API_KEY` OR `GEMINI_API_KEY` to enable Smart Scan and recipe generation. Without it, the app shows a friendly setup message instead of exposing technical details.
 
-Recipe reference photos default to local generation through ComfyUI. Standard ComfyUI often uses `http://127.0.0.1:8188`; the ComfyUI Desktop app may use `http://127.0.0.1:8000`. Set `COMFYUI_URL` to whichever `/system_stats` endpoint responds, then keep `RECIPE_IMAGE_PROVIDER=local` and `LOCAL_IMAGE_API=comfyui`. The app automatically reads the first available checkpoint unless `COMFYUI_CHECKPOINT` is set to a specific checkpoint filename.
+For Gemini text and image understanding, `GEMINI_MODEL=gemini-3.1-flash-lite` pins the app to a stable low-latency model instead of a hot-swapped `latest` alias.
+
+Recipe reference photos first try images that users explicitly approved by binding them to a recipe, then real dish photos from TheMealDB/Wikimedia, then the configured generator. Automatic image matches are suggestions only; they become long-term shared cache entries only after a user chooses to bind the image to a recipe.
+
+Set `RECIPE_IMAGE_PROVIDER` to `disabled`, `local`, `gemini`, or `replicate`. Use `disabled` for production modes that should never generate images, `local` for ComfyUI/SD WebUI development, `gemini` for Gemini image generation, or `replicate` for cloud FLUX-style generation with `REPLICATE_API_TOKEN` and `REPLICATE_IMAGE_MODEL`.
+
+Standard ComfyUI often uses `http://127.0.0.1:8188`; the ComfyUI Desktop app may use `http://127.0.0.1:8000`. Set `COMFYUI_URL` to whichever `/system_stats` endpoint responds, then keep `RECIPE_IMAGE_PROVIDER=local` and `LOCAL_IMAGE_API=comfyui`. The app automatically reads the first available checkpoint unless `COMFYUI_CHECKPOINT` is set to a specific checkpoint filename.
+
+For `flux1-schnell-fp8.safetensors`, set `COMFYUI_CHECKPOINT=flux1-schnell-fp8.safetensors`, `COMFYUI_IMAGE_WIDTH=640`, `COMFYUI_IMAGE_HEIGHT=448`, `COMFYUI_STEPS=4`, `COMFYUI_CFG_SCALE=1`, `COMFYUI_SAMPLER=euler`, and `COMFYUI_SCHEDULER=simple`. This is a good speed/quality balance for app reference images. If these tuning variables are left blank, the app chooses FLUX-friendly defaults for checkpoint names containing `flux`, and keeps SDXL-friendly defaults for normal SDXL checkpoints.
 
 Set `RECIPE_IMAGE_PROVIDER=gemini` only if you want Gemini to generate recipe reference photos instead of local ComfyUI. `GEMINI_IMAGE_MODEL` chooses the Gemini image model for that mode.
 

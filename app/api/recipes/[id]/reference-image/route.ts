@@ -1,13 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { setRecipeFavorite } from "@/lib/repositories/recipeRepository";
+import { setRecipeReferenceImage } from "@/lib/repositories/recipeRepository";
 import { handleRouteError, jsonError, jsonOk, localeFromRequest, parseJson } from "@/lib/server/http";
 import { profileIdSchema, recipeReferenceImageSchema } from "@/lib/validation/schemas";
 
-const favoriteSchema = z.object({
+const referenceImageUpdateSchema = z.object({
   profileId: profileIdSchema,
-  isFavorite: z.boolean(),
-  referenceImage: recipeReferenceImageSchema.nullable().optional()
+  referenceImage: recipeReferenceImageSchema
 });
 
 export async function PATCH(
@@ -16,12 +15,11 @@ export async function PATCH(
 ) {
   const locale = localeFromRequest(request);
   try {
-    const body = await parseJson(request, favoriteSchema);
+    const body = await parseJson(request, referenceImageUpdateSchema);
     const { id } = await context.params;
-    const recipe = await setRecipeFavorite({
+    const recipe = await setRecipeReferenceImage({
       profileId: body.profileId,
       recipeId: id,
-      isFavorite: body.isFavorite,
       referenceImage: body.referenceImage
     });
     if (!recipe) {
