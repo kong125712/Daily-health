@@ -38,6 +38,36 @@ export type ServiceStatusResponse = {
   items: ServiceStatusItem[];
 };
 
+export type RuntimeConnectionMode = "loopback" | "lan" | "public";
+
+export type RuntimeImageGenerationProvider = "disabled" | "gemini" | "local" | "replicate";
+
+export type RuntimeStatusResponse = {
+  checkedAt: string;
+  state: ServiceStatusState;
+  serverOrigin: string;
+  serverHost: string;
+  protocol: "http" | "https";
+  connectionMode: RuntimeConnectionMode;
+  isHttps: boolean;
+  isLoopback: boolean;
+  isPrivateNetwork: boolean;
+  apkReachable: boolean;
+  lanOrigins: string[];
+  imageGeneration: {
+    provider: RuntimeImageGenerationProvider;
+    location: "disabled" | "server-local" | "cloud";
+    configured: boolean;
+    requiresServerGpu: boolean;
+    requiresInternet: boolean;
+    localApi: "comfyui" | "sdwebui" | null;
+    endpoint: string | null;
+    model: string | null;
+  };
+  notesEn: string[];
+  notesZh: string[];
+};
+
 export type UserProfileView = {
   id: string;
   displayName: string | null;

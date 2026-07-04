@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import { apiFetch } from "@/lib/client/api";
 import { Toast, type ToastState } from "@/components/shared/Toast";
+import { ConnectionModePanel } from "@/components/me/ConnectionModePanel";
 
 type BackupImportResponse = {
   summary: {
@@ -139,6 +140,8 @@ export default function MePage() {
           );
         })}
       </section>
+
+      <ConnectionModePanel />
 
       <section className="panel grid gap-5">
         <div className="flex items-center gap-2">
