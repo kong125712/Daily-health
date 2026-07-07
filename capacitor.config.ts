@@ -1,15 +1,17 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const mobileServerUrl = process.env.MOBILE_SERVER_URL?.trim();
-
 const config: CapacitorConfig = {
   appId: "com.dailyhealth.mobile",
   appName: "Daily Health",
   webDir: "mobile-web",
   server: {
-    allowNavigation: ["*"],
-    cleartext: true,
-    ...(mobileServerUrl ? { url: mobileServerUrl } : {})
+    allowNavigation: ["127.0.0.1", "localhost"],
+    cleartext: true
+  },
+  plugins: {
+    NodeJS: {
+      nodeDir: "nodejs"
+    }
   },
   android: {
     allowMixedContent: true

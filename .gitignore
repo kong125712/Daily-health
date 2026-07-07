@@ -4,6 +4,8 @@ node_modules
 out
 dist
 *.log
+mobile-web/nodejs/
+mobile-web/daily-health-data/
 
 .env
 .env.*

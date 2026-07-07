@@ -24,6 +24,22 @@ allprojects {
     }
 }
 
+subprojects { subproject ->
+    if (subproject.name == "capacitor-nodejs") {
+        subproject.plugins.withId("com.android.library") {
+            subproject.android {
+                namespace "net.hampoelz.capacitor.nodejs"
+                ndkVersion "27.2.12479018"
+                defaultConfig {
+                    ndk {
+                        abiFilters "arm64-v8a"
+                    }
+                }
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

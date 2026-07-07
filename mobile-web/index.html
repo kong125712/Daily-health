@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#34785f" />
-    <title>Daily Health Mobile</title>
+    <title>Daily Health</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -16,17 +16,28 @@
         margin: 0;
         display: grid;
         place-items: center;
-        background: linear-gradient(135deg, #e4f4ec, #eaf4ff 52%, #fff4d0);
+        background: #f6faf7;
         color: #17211c;
       }
 
       main {
-        width: min(92vw, 440px);
-        border: 1px solid rgba(255, 255, 255, 0.75);
+        width: min(88vw, 360px);
+        display: grid;
+        gap: 18px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .mark {
+        width: 64px;
+        height: 64px;
         border-radius: 8px;
-        background: rgba(255, 255, 255, 0.88);
-        box-shadow: 0 18px 45px rgba(20, 35, 30, 0.12);
-        padding: 24px;
+        display: grid;
+        place-items: center;
+        background: #34785f;
+        color: white;
+        font-size: 30px;
+        font-weight: 800;
       }
 
       h1 {
@@ -35,129 +46,103 @@
       }
 
       p {
+        margin: 0;
         color: #52645b;
         line-height: 1.6;
       }
 
-      label {
-        display: grid;
-        gap: 8px;
-        margin-top: 18px;
-        font-weight: 700;
-      }
-
-      input,
-      button {
-        min-height: 44px;
-        border-radius: 6px;
-        font: inherit;
-      }
-
-      input {
-        border: 1px solid #b9c8c0;
-        padding: 0 12px;
-      }
-
-      button {
+      .bar {
         width: 100%;
-        margin-top: 14px;
-        border: 0;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #dcece5;
+      }
+
+      .bar::before {
+        content: "";
+        display: block;
+        width: 45%;
+        height: 100%;
+        border-radius: inherit;
         background: #34785f;
-        color: white;
-        font-weight: 800;
-      }
-
-      .hint {
-        font-size: 13px;
-      }
-
-      .warning {
-        border: 1px solid rgba(182, 89, 115, 0.35);
-        border-radius: 6px;
-        background: rgba(182, 89, 115, 0.1);
-        padding: 10px 12px;
-        font-size: 13px;
-        font-weight: 700;
+        animation: loading 1.2s ease-in-out infinite;
       }
 
       .error {
-        min-height: 20px;
-        color: #b65973;
+        display: none;
+        border: 1px solid rgba(182, 89, 115, 0.35);
+        border-radius: 8px;
+        background: rgba(182, 89, 115, 0.1);
+        padding: 12px;
+        color: #8f314d;
+        font-size: 14px;
         font-weight: 700;
+      }
+
+      @keyframes loading {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(230%);
+        }
       }
 
       @media (prefers-color-scheme: dark) {
         body {
-          background: linear-gradient(135deg, #12211c, #141d2c 52%, #2b1f2b);
+          background: #07120f;
           color: #f8fafc;
-        }
-
-        main {
-          border-color: rgba(51, 65, 85, 0.85);
-          background: rgba(15, 23, 42, 0.9);
         }
 
         p {
           color: #cbd5e1;
         }
 
-        input {
-          border-color: #334155;
-          background: #020617;
-          color: #f8fafc;
+        .bar {
+          background: #173229;
         }
       }
     </style>
   </head>
   <body>
     <main>
+      <div class="mark">D</div>
       <h1>Daily Health</h1>
-      <p>
-        Connect this mobile client to a running Daily Health server.
-        <br />
-        将手机端连接到正在运行的 Daily Health 服务地址。
-      </p>
-      <form id="server-form">
-        <label>
-          Server URL / 服务地址
-          <input id="server-url" type="url" placeholder="http://192.168.1.20:3000" autocomplete="url" required />
-        </label>
-        <button type="submit">Open Daily Health / 打开应用</button>
-        <p class="hint">
-          For local testing, use the computer LAN address, for example http://192.168.1.20:3000.
-          本地测试请使用电脑局域网地址，例如 http://192.168.1.20:3000。
-        </p>
-        <p class="warning">
-          Do not enter the GitHub repository URL. This must be a running Daily Health server with API routes.
-        </p>
-        <p id="error" class="error" aria-live="polite"></p>
-      </form>
+      <p id="status">Starting local health server...</p>
+      <div class="bar" aria-hidden="true"></div>
+      <p id="error" class="error"></p>
     </main>
     <script>
-      const key = "daily_health_mobile_server_url";
-      const input = document.getElementById("server-url");
-      const error = document.getElementById("error");
-      const saved = localStorage.getItem(key);
+      const localOrigin = "http://127.0.0.1:34189";
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      let attempts = 0;
 
-      if (saved) {
-        input.value = saved;
+      async function waitForServer() {
+        attempts += 1;
+        statusEl.textContent = attempts < 8 ? "Starting local health server..." : "Still preparing local data...";
+        try {
+          const response = await fetch(localOrigin + "/api/runtime-status", { cache: "no-store" });
+          if (response.ok) {
+            window.location.replace(localOrigin);
+            return;
+          }
+        } catch {
+          // The embedded server may still be starting.
+        }
+
+        if (attempts >= 45) {
+          errorEl.style.display = "block";
+          errorEl.textContent = "Local server did not start. Reopen the app or check the APK diagnostic logs.";
+          statusEl.textContent = "Unable to open Daily Health.";
+          return;
+        }
+
+        window.setTimeout(waitForServer, 1000);
       }
 
-      document.getElementById("server-form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        error.textContent = "";
-        try {
-          const url = new URL(input.value.trim());
-          if (url.protocol !== "http:" && url.protocol !== "https:") {
-            throw new Error("Unsupported protocol.");
-          }
-          const serverOrigin = url.origin;
-          localStorage.setItem(key, serverOrigin);
-          window.location.href = serverOrigin;
-        } catch {
-          error.textContent = "Please enter a valid http or https URL. / 请输入有效的网址。";
-        }
-      });
+      waitForServer();
     </script>
   </body>
 </html>
