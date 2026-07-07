@@ -1,11 +1,15 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleX, Database, Image, Network, RefreshCw, Server, Sparkles } from "lucide-react";
+import { AlertTriangle, Bug, CheckCircle2, CircleX, Database, Image, Network, RefreshCw, Server, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client/api";
 import { useApp } from "@/lib/i18n/I18nProvider";
-import type { ServiceStatusItem, ServiceStatusResponse, ServiceStatusState } from "@/lib/types/domain";
+import type { AppErrorLogView, ServiceStatusItem, ServiceStatusResponse, ServiceStatusState } from "@/lib/types/domain";
 import { LoadingState } from "@/components/shared/LoadingState";
+
+type ErrorLogsResponse = {
+  logs: AppErrorLogView[];
+};
 
 const iconMap: Record<ServiceStatusItem["id"], typeof Server> = {
   app: Server,
@@ -36,6 +40,12 @@ const stateStyle: Record<ServiceStatusState, { panel: string; icon: typeof Check
   }
 };
 
+const severityStyle: Record<AppErrorLogView["severity"], string> = {
+  info: "border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/70 dark:bg-sky-950/35 dark:text-sky-100",
+  warning: "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-100",
+  error: "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900/70 dark:bg-rose-950/35 dark:text-rose-100"
+};
+
 function StatusBadge({ state }: { state: ServiceStatusState }) {
   const { t } = useApp();
   const style = stateStyle[state];
@@ -45,6 +55,35 @@ function StatusBadge({ state }: { state: ServiceStatusState }) {
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {t(style.labelKey)}
     </span>
+  );
+}
+
+function ErrorLogCard({ log }: { log: AppErrorLogView }) {
+  const { locale, t } = useApp();
+  const details = [
+    log.path ? `${t("status.errorPath")}: ${log.method ? `${log.method} ` : ""}${log.path}` : null,
+    log.statusCode ? `${t("status.errorStatusCode")}: ${log.statusCode}` : null,
+    log.userAgent ? `${t("status.errorUserAgent")}: ${log.userAgent}` : null
+  ].filter(Boolean);
+
+  return (
+    <article className="rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(log.createdAt).toLocaleString(locale)}</p>
+          <h3 className="mt-1 break-words text-sm font-semibold text-slate-950 dark:text-white">{log.message}</h3>
+        </div>
+        <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${severityStyle[log.severity]}`}>
+          {log.severity}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+        <p>{t("status.errorSource")}: {log.source}</p>
+        {details.map((detail) => (
+          <p key={detail} className="break-words">{detail}</p>
+        ))}
+      </div>
+    </article>
   );
 }
 
@@ -82,6 +121,7 @@ function ServiceCard({ item }: { item: ServiceStatusItem }) {
 export default function StatusPage() {
   const { locale, t } = useApp();
   const [status, setStatus] = useState<ServiceStatusResponse | null>(null);
+  const [errorLogs, setErrorLogs] = useState<AppErrorLogView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -89,8 +129,12 @@ export default function StatusPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await apiFetch<ServiceStatusResponse>("/api/service-status", { locale });
+      const [response, logsResponse] = await Promise.all([
+        apiFetch<ServiceStatusResponse>("/api/service-status", { locale }),
+        apiFetch<ErrorLogsResponse>("/api/error-logs?limit=8", { locale }).catch(() => ({ logs: [] }))
+      ]);
       setStatus(response);
+      setErrorLogs(logsResponse.logs);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("common.error"));
     } finally {
@@ -138,6 +182,26 @@ export default function StatusPage() {
           ))}
         </section>
       ) : null}
+      <section className="panel grid gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-mint text-leaf dark:bg-emerald-950 dark:text-emerald-200">
+            <Bug className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("status.recentErrors")}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("status.recentErrorsSubtitle")}</p>
+          </div>
+        </div>
+        {errorLogs.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {errorLogs.map((log) => (
+              <ErrorLogCard key={log.id} log={log} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t("status.noRecentErrors")}</p>
+        )}
+      </section>
     </main>
   );
 }

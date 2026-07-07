@@ -240,6 +240,19 @@ export const deleteByIdSchema = z.object({
   id: z.string().cuid()
 });
 
+export const errorLogInputSchema = z.object({
+  profileId: z.string().trim().max(128).nullable().optional(),
+  source: z.string().trim().min(1).max(80),
+  severity: z.enum(["info", "warning", "error"]).default("error"),
+  message: z.string().trim().min(1).max(1000),
+  path: z.string().trim().max(500).nullable().optional(),
+  method: z.string().trim().max(20).nullable().optional(),
+  statusCode: z.number().int().min(100).max(599).nullable().optional(),
+  stack: z.string().trim().max(4000).nullable().optional(),
+  userAgent: z.string().trim().max(500).nullable().optional(),
+  details: z.record(z.unknown()).nullable().optional()
+});
+
 export const backupImportRequestSchema = z.object({
   profileId: profileIdSchema,
   backup: z.unknown()

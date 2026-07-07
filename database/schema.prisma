@@ -154,6 +154,25 @@ model RecipeImageCache {
   @@index([lastUsedAt])
 }
 
+model AppErrorLog {
+  id          String   @id @default(cuid())
+  profileId   String?
+  source      String
+  severity    String   @default("error")
+  message     String
+  path        String?
+  method      String?
+  statusCode  Int?
+  stack       String?
+  userAgent   String?
+  detailsJson String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([profileId, createdAt])
+  @@index([source, createdAt])
+}
+
 model RecipeTranslation {
   id                  String   @id @default(cuid())
   recipeId            String

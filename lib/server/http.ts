@@ -65,6 +65,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message.toLowerCase() : "";
 }
 
+function isJsonParseError(error: unknown) {
+  return error instanceof SyntaxError && errorMessage(error).includes("json");
+}
+
 function isAiQuotaError(error: unknown) {
   const message = errorMessage(error);
   return (
@@ -109,6 +113,15 @@ function isAiResponseFormatError(error: unknown) {
 export function handleRouteError(error: unknown, locale: AppLocale) {
   if (error instanceof ZodError) {
     return jsonError(error.issues.map((issue) => issue.message).join(", "), 400);
+  }
+
+  if (isJsonParseError(error)) {
+    return jsonError(
+      locale === "zh-CN"
+        ? "请求内容不是有效 JSON，请检查手机或网页发出的 API 请求。"
+        : "The request body is not valid JSON. Check the API request sent by the phone or browser.",
+      400
+    );
   }
 
   if (isDatabaseConfigurationError(error)) {

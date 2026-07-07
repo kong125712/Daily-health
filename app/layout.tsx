@@ -3,6 +3,7 @@ import "./globals.css";
 import { AppProvider } from "@/lib/i18n/I18nProvider";
 import { Navbar } from "@/components/navigation/Navbar";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
+import { ClientErrorReporter } from "@/components/shared/ClientErrorReporter";
 
 export const metadata: Metadata = {
   title: "Daily Health",
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body>
         <AppProvider>
+          <ClientErrorReporter />
           <Navbar />
           {children}
           <BottomNavigation />

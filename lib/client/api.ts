@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientError } from "@/lib/client/errorReporting";
 import type { AppLocale } from "@/lib/types/domain";
 
 type ApiOptions = {
@@ -8,6 +9,10 @@ type ApiOptions = {
   profileId?: string | null;
   locale?: AppLocale;
 };
+
+function localizedMessage(locale: AppLocale | undefined, en: string, zh: string) {
+  return locale === "zh-CN" ? zh : en;
+}
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers();
@@ -22,15 +27,29 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     headers.set("x-app-locale", options.locale);
   }
 
+  const method = options.method ?? (options.body === undefined ? "GET" : "POST");
   let response: Response;
   try {
     response = await fetch(path, {
-      method: options.method ?? (options.body === undefined ? "GET" : "POST"),
+      method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body)
     });
-  } catch {
-    throw new Error("Unable to reach the Daily Health server. Please make sure it is running and refresh the page.");
+  } catch (fetchError) {
+    const message = localizedMessage(
+      options.locale,
+      "Unable to reach the Daily Health server. Please make sure it is running and refresh the page.",
+      "无法连接 Daily Health 服务器。请确认服务器正在运行，然后刷新页面。"
+    );
+    void reportClientError({
+      source: "api-fetch",
+      message,
+      method,
+      path,
+      stack: fetchError instanceof Error ? fetchError.stack ?? null : null,
+      details: { requestPath: path, kind: "network" }
+    });
+    throw new Error(message);
   }
 
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -40,8 +59,29 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   if (!looksLikeJson) {
     const returnedHtml = responseText.trimStart().startsWith("<");
     const message = returnedHtml
-      ? "The server returned an HTML page instead of JSON. In the APK, make sure the server URL points to a running Daily Health backend, not a GitHub page or static website."
-      : "The server returned a non-JSON response. Please check the Daily Health server URL and logs.";
+      ? localizedMessage(
+          options.locale,
+          "The server returned an HTML page instead of JSON. In the APK, make sure the server URL points to a running Daily Health backend, not a GitHub page or static website.",
+          "服务器返回了网页而不是 JSON。APK 里的服务器地址必须指向正在运行的 Daily Health 后端，不能是 GitHub 页面或静态网站。"
+        )
+      : localizedMessage(
+          options.locale,
+          "The server returned a non-JSON response. Please check the Daily Health server URL and logs.",
+          "服务器返回了非 JSON 内容。请检查 Daily Health 服务器地址和日志。"
+        );
+    void reportClientError({
+      source: "api-fetch",
+      message,
+      method,
+      path,
+      statusCode: response.status || null,
+      details: {
+        requestPath: path,
+        kind: returnedHtml ? "html-response" : "non-json-response",
+        contentType,
+        preview: responseText.slice(0, 300)
+      }
+    });
     throw new Error(message);
   }
 
@@ -49,7 +89,25 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   try {
     data = responseText ? JSON.parse(responseText) : null;
   } catch {
-    throw new Error("The Daily Health server returned invalid JSON. Please check the server logs.");
+    const message = localizedMessage(
+      options.locale,
+      "The Daily Health server returned invalid JSON. Please check the server logs.",
+      "Daily Health 服务器返回了无效 JSON。请检查服务器日志。"
+    );
+    void reportClientError({
+      source: "api-fetch",
+      message,
+      method,
+      path,
+      statusCode: response.status || null,
+      details: {
+        requestPath: path,
+        kind: "invalid-json",
+        contentType,
+        preview: responseText.slice(0, 300)
+      }
+    });
+    throw new Error(message);
   }
 
   if (!response.ok) {
@@ -60,6 +118,19 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
       typeof data.error === "string"
         ? data.error
         : "Request failed.";
+    void reportClientError({
+      source: "api-fetch",
+      severity: response.status >= 500 ? "error" : "warning",
+      message,
+      method,
+      path,
+      statusCode: response.status,
+      details: {
+        requestPath: path,
+        kind: "api-error",
+        statusText: response.statusText
+      }
+    });
     throw new Error(message);
   }
 

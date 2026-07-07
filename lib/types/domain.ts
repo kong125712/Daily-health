@@ -68,6 +68,21 @@ export type RuntimeStatusResponse = {
   notesZh: string[];
 };
 
+export type AppErrorLogView = {
+  id: string;
+  profileId: string | null;
+  source: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  path: string | null;
+  method: string | null;
+  statusCode: number | null;
+  stack: string | null;
+  userAgent: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+};
+
 export type UserProfileView = {
   id: string;
   displayName: string | null;
