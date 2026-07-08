@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  capacitor-nodejs@0.0.1: 8a7159be6f37512054253ba9a2ef3672c1cf95cc04e317dc0abefdd66419ec8f
+  capacitor-nodejs@0.0.1: 4743b6b3175beae7becdf0f4dfdecf1d643b70289b084fbe182ed474f8f66cfb
 
 importers:
 
@@ -28,7 +28,7 @@ importers:
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
       capacitor-nodejs:
         specifier: 0.0.1
-        version: 0.0.1(patch_hash=8a7159be6f37512054253ba9a2ef3672c1cf95cc04e317dc0abefdd66419ec8f)(@capacitor/core@8.4.1)
+        version: 0.0.1(patch_hash=4743b6b3175beae7becdf0f4dfdecf1d643b70289b084fbe182ed474f8f66cfb)(@capacitor/core@8.4.1)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -3366,7 +3366,7 @@ snapshots:
 
   caniuse-lite@1.0.30001799: {}
 
-  capacitor-nodejs@0.0.1(patch_hash=8a7159be6f37512054253ba9a2ef3672c1cf95cc04e317dc0abefdd66419ec8f)(@capacitor/core@8.4.1):
+  capacitor-nodejs@0.0.1(patch_hash=4743b6b3175beae7becdf0f4dfdecf1d643b70289b084fbe182ed474f8f66cfb)(@capacitor/core@8.4.1):
     dependencies:
       '@capacitor/core': 8.4.1
 
