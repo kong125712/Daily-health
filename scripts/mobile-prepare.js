@@ -30,17 +30,35 @@ function findFiles(dir, fileName, result = []) {
   return result;
 }
 
-function copyDirectory(source, target) {
+function copyEntry(source, target, stack = new Set()) {
+  const stat = fs.statSync(source);
+  if (stat.isDirectory()) {
+    copyDirectory(source, target, stack);
+  } else if (stat.isFile()) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+  }
+}
+
+function copyDirectory(source, target, stack = new Set()) {
+  const realSource = fs.realpathSync(source);
+  if (stack.has(realSource)) {
+    return;
+  }
+  stack.add(realSource);
   fs.mkdirSync(target, { recursive: true });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
     const from = path.join(source, entry.name);
     const to = path.join(target, entry.name);
-    if (entry.isDirectory()) {
-      copyDirectory(from, to);
+    if (entry.isSymbolicLink()) {
+      copyEntry(fs.realpathSync(from), to, stack);
+    } else if (entry.isDirectory()) {
+      copyDirectory(from, to, stack);
     } else if (entry.isFile()) {
       fs.copyFileSync(from, to);
     }
   }
+  stack.delete(realSource);
 }
 
 function removeIfExists(target) {
@@ -212,6 +230,24 @@ function writeNodePackage() {
   );
 }
 
+function assertPreparedServer() {
+  const requiredFiles = [
+    path.join(outputDir, "server.js"),
+    path.join(outputDir, "index.js"),
+    path.join(outputDir, "package.json"),
+    path.join(outputDir, ".next", "BUILD_ID"),
+    path.join(outputDir, ".next", "server", "app", "page.js"),
+    path.join(outputDir, "node_modules", "next", "package.json"),
+    path.join(outputDir, "data", "daily-health-template.db")
+  ];
+
+  for (const file of requiredFiles) {
+    if (!fs.existsSync(file)) {
+      throw new Error(`Embedded server is incomplete. Missing ${path.relative(root, file)}.`);
+    }
+  }
+}
+
 function main() {
   assertDirectory(standaloneRoot, "Run `pnpm run build` before `pnpm run mobile:prepare`.");
   assertDirectory(nextStaticDir, "Missing .next/static. Run `pnpm run build` first.");
@@ -235,6 +271,7 @@ function main() {
   createDatabaseTemplate();
   writeBootstrap();
   writeNodePackage();
+  assertPreparedServer();
 
   const size = directorySize(outputDir);
   const sizeMb = (size / 1024 / 1024).toFixed(1);

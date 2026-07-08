@@ -152,6 +152,19 @@ jobs:
           chmod +x android/gradlew
           ./android/gradlew -p android assembleDebug assembleRelease
 
+      - name: Verify embedded APK contents
+        run: |
+          for apk in android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/release/app-release.apk; do
+            echo "Checking $apk"
+            ls -lh "$apk"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/BUILD_ID"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/page.js"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/next/package.json"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
+            unzip -l "$apk" | grep -F "lib/arm64-v8a/libnode.so"
+            unzip -l "$apk" | grep -F "lib/arm64-v8a/libnative-lib.so"
+          done
+
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
