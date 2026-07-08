@@ -1,0 +1,12 @@
+diff --git a/android/src/main/cpp/native-lib.cpp b/android/src/main/cpp/native-lib.cpp
+index ca1f68ca0cc87a6baa5da6da42b757af76d9fca2..8c4455db9468f8b953498a5de571630383766dc6 100644
+--- a/android/src/main/cpp/native-lib.cpp
++++ b/android/src/main/cpp/native-lib.cpp
+@@ -11,7 +11,7 @@
+ #include <android/log.h>
+ 
+ #include "node.h"
+-#include "bridge.h"
++#include "Bridge.h"
+ 
+ const char *AdbTag = "NodeJS-Engine";
