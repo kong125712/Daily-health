@@ -180,8 +180,18 @@ function createDatabaseTemplate() {
 }
 
 function writeBootstrap() {
-  const bootstrap = `const fs = require("node:fs");
-const path = require("node:path");
+  const bootstrap = `const Module = require("module");
+const originalResolveFilename = Module._resolveFilename;
+
+Module._resolveFilename = function resolveNodeProtocol(request, parent, isMain, options) {
+  if (typeof request === "string" && request.startsWith("node:")) {
+    request = request.slice(5);
+  }
+  return originalResolveFilename.call(this, request, parent, isMain, options);
+};
+
+const fs = require("fs");
+const path = require("path");
 
 const port = process.env.PORT || "34189";
 const host = "127.0.0.1";
