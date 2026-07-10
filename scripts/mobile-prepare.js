@@ -68,6 +68,43 @@ function removeIfExists(target) {
   }
 }
 
+function readPackageName(packageJsonPath) {
+  try {
+    return JSON.parse(fs.readFileSync(packageJsonPath, "utf8")).name;
+  } catch {
+    return null;
+  }
+}
+
+function findPackageRoot(packageName) {
+  const candidates = [];
+
+  try {
+    candidates.push(path.dirname(require.resolve(`${packageName}/package.json`, { paths: [root] })));
+  } catch {
+    // Some packages intentionally hide package.json behind exports.
+  }
+
+  try {
+    candidates.push(path.dirname(require.resolve(packageName, { paths: [root] })));
+  } catch {
+    // Keep the final error focused on the package root lookup.
+  }
+
+  for (const candidate of candidates) {
+    let current = candidate;
+    while (current !== path.dirname(current)) {
+      const packageJsonPath = path.join(current, "package.json");
+      if (fs.existsSync(packageJsonPath) && readPackageName(packageJsonPath) === packageName) {
+        return current;
+      }
+      current = path.dirname(current);
+    }
+  }
+
+  throw new Error(`Unable to locate package root for ${packageName}.`);
+}
+
 function directorySize(dir) {
   let total = 0;
   if (!fs.existsSync(dir)) return total;
@@ -242,8 +279,7 @@ function writeNodePackage() {
 }
 
 function copyRuntimePackage(packageName) {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`, { paths: [root] });
-  const packageRoot = path.dirname(packageJsonPath);
+  const packageRoot = findPackageRoot(packageName);
   const target = path.join(outputDir, "node_modules", ...packageName.split("/"));
 
   removeIfExists(target);

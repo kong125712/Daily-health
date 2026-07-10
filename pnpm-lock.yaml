@@ -29,6 +29,9 @@ importers:
       capacitor-nodejs:
         specifier: 0.0.1
         version: 0.0.1(patch_hash=4743b6b3175beae7becdf0f4dfdecf1d643b70289b084fbe182ed474f8f66cfb)(@capacitor/core@8.4.1)
+      client-only:
+        specifier: 0.0.1
+        version: 0.0.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -47,6 +50,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.7(react@19.2.7)
+      styled-jsx:
+        specifier: 5.1.6
+        version: 5.1.6(react@19.2.7)
       zod:
         specifier: ^3.25.0
         version: 3.25.76

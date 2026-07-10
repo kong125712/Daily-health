@@ -25,12 +25,14 @@
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "6.19.3",
     "capacitor-nodejs": "0.0.1",
+    "client-only": "0.0.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "next": "^15.3.4",
     "openai": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "styled-jsx": "5.1.6",
     "zod": "^3.25.0"
   },
   "devDependencies": {
