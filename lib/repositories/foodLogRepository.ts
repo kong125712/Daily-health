@@ -116,6 +116,9 @@ export async function createRecipeFoodLog(input: {
     nameEn: en?.title ?? recipe.cuisineStyle,
     nameZh: zh?.title,
     calories: input.calories ?? recipe.estimatedCaloriesPerServing,
+    proteinGrams: recipe.estimatedProteinGramsPerServing,
+    carbsGrams: recipe.estimatedCarbsGramsPerServing,
+    fatGrams: recipe.estimatedFatGramsPerServing,
     sourceType: "recipe"
   });
 }

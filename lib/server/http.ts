@@ -23,8 +23,8 @@ export function jsonMessageError(locale: AppLocale, key: TranslationKey, status:
   return NextResponse.json({ error: translate(locale, key) }, { status });
 }
 
-export function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status });
+export function jsonError(message: string, status: number, extra?: Record<string, unknown>) {
+  return NextResponse.json({ error: message, ...extra }, { status });
 }
 
 export async function parseJson<S extends z.ZodTypeAny>(

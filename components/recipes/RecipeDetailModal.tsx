@@ -6,6 +6,10 @@ import { useApp } from "@/lib/i18n/I18nProvider";
 import type { RecipeView } from "@/lib/types/domain";
 import { RecipeReferenceImage } from "./RecipeReferenceImage";
 
+function formatMacro(value: number | null) {
+  return value == null ? "-" : `${Math.round(value * 10) / 10} g`;
+}
+
 export function RecipeDetailModal({ recipe, onClose }: { recipe: RecipeView | null; onClose: () => void }) {
   const { locale, t } = useApp();
   if (!recipe) {
@@ -27,6 +31,24 @@ export function RecipeDetailModal({ recipe, onClose }: { recipe: RecipeView | nu
         </div>
         <div className="mt-5">
           <RecipeReferenceImage recipe={recipe} />
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
+            <span className="block text-xs text-slate-500 dark:text-slate-400">{t("common.calories")}</span>
+            <span className="font-semibold text-slate-950 dark:text-white">{recipe.estimatedCaloriesPerServing ?? "-"} kcal</span>
+          </div>
+          <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
+            <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroProtein")}</span>
+            <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedProteinGramsPerServing)}</span>
+          </div>
+          <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
+            <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroCarbs")}</span>
+            <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedCarbsGramsPerServing)}</span>
+          </div>
+          <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
+            <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroFat")}</span>
+            <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedFatGramsPerServing)}</span>
+          </div>
         </div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <section>

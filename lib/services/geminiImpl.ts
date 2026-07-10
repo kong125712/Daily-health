@@ -156,7 +156,7 @@ export async function generateRecipesWithGeminiImpl(input: {
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
     "Use structured JSON only with a top-level recipes array of exactly 3 items.",
-    "Do not calculate recipe calories yourself. Set estimatedCaloriesPerServing to 0; the server will calculate calories after generation from the final ingredient amounts and seasonings.",
+    "Do not calculate recipe calories or macros yourself. Set estimatedCaloriesPerServing, estimatedProteinGramsPerServing, estimatedCarbsGramsPerServing, and estimatedFatGramsPerServing to 0; the server will calculate nutrition after generation from the final ingredient amounts and seasonings.",
     "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use the most common English dish name when possible, such as tomato egg stir fry or chicken curry. Do not use broad labels such as egg breakfast, protein meal, or healthy bowl. Use concrete dish/ingredient words, no brands and no punctuation.",
     "",
     "Visible or user-confirmed ingredients:",
@@ -181,6 +181,9 @@ export async function generateRecipesWithGeminiImpl(input: {
           estimatedCookingMinutes: 0,
           servings: 0,
           estimatedCaloriesPerServing: 0,
+          estimatedProteinGramsPerServing: 0,
+          estimatedCarbsGramsPerServing: 0,
+          estimatedFatGramsPerServing: 0,
           translations: [
             { locale: "en", title: "string", shortDescription: "string", nutritionDisclaimer: "string" },
             { locale: "zh-CN", title: "string", shortDescription: "string", nutritionDisclaimer: "string" }

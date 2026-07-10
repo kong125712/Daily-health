@@ -3,10 +3,26 @@ import { getIngredientScan, saveEpicurePairings } from "@/lib/repositories/ingre
 import { createRecipes, getRecipe } from "@/lib/repositories/recipeRepository";
 import { jsonMessageError, handleRouteError, jsonError, jsonOk, localeFromRequest, parseJson } from "@/lib/server/http";
 import { getEpicurePairings } from "@/lib/services/epicureService";
+import { generateFallbackRecipes } from "@/lib/services/fallbackRecipeService";
 import { generateRecipesWithOpenAI } from "@/lib/services/openaiService";
-import { applyRecipeCalorieEstimates } from "@/lib/services/recipeCalories";
+import { applyRecipeNutritionEstimates } from "@/lib/services/recipeCalories";
 import type { RecognizedIngredientInput } from "@/lib/types/domain";
 import { generateRecipesRequestSchema } from "@/lib/validation/schemas";
+
+const localFallbackCode = "LOCAL_RECIPE_FALLBACK_AVAILABLE";
+
+function localFallbackResponse(locale: "en" | "zh-CN") {
+  return jsonError(
+    locale === "zh-CN"
+      ? "Gemini 菜谱生成暂时无法连接。是否改用本地生成菜谱？"
+      : "Gemini recipe generation is temporarily unavailable. Use local recipe generation instead?",
+    503,
+    {
+      code: localFallbackCode,
+      localFallbackAvailable: true
+    }
+  );
+}
 
 export async function POST(request: NextRequest) {
   const locale = localeFromRequest(request);
@@ -51,24 +67,41 @@ export async function POST(request: NextRequest) {
       await saveEpicurePairings({ scanId: sourceScanId, pairings: epicure.pairings });
     }
 
-    const generated = await generateRecipesWithOpenAI({
+    let generated = await generateRecipesWithOpenAI({
       locale: body.locale,
       ingredients,
       pairings: epicure.pairings,
       preferences: body.preferences,
       avoidRecipes: body.avoidRecipes
+    }).catch((error) => {
+      console.warn("AI recipe generation failed; local fallback requires user confirmation", error);
+      return null;
     });
 
-    if (!generated.ok) {
+    if (!generated || !generated.ok) {
       const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
-      return jsonMessageError(
-        locale,
-        isGemini ? "error.geminiRecipe" : "error.openaiRecipe",
-        503
-      );
+      if (!body.allowLocalFallback) {
+        return localFallbackResponse(locale);
+      }
+      generated = {
+        ok: true as const,
+        recipes: generateFallbackRecipes({
+          locale: body.locale,
+          ingredients,
+          pairings: epicure.pairings,
+          preferences: body.preferences
+        })
+      };
+      if (generated.recipes.length === 0) {
+        return jsonMessageError(
+          locale,
+          isGemini ? "error.geminiRecipe" : "error.openaiRecipe",
+          503
+        );
+      }
     }
 
-    const recipesWithCalories = await applyRecipeCalorieEstimates({
+    const recipesWithNutrition = await applyRecipeNutritionEstimates({
       recipes: generated.recipes,
       sourceIngredients: ingredients,
       pairings: epicure.pairings
@@ -77,7 +110,7 @@ export async function POST(request: NextRequest) {
     const recipes = await createRecipes({
       profileId: body.profileId,
       sourceScanId,
-      recipes: recipesWithCalories
+      recipes: recipesWithNutrition
     });
 
     return jsonOk({

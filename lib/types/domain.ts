@@ -171,6 +171,9 @@ export type GeneratedRecipeInput = {
   estimatedCookingMinutes: number;
   servings: number;
   estimatedCaloriesPerServing?: number;
+  estimatedProteinGramsPerServing?: number;
+  estimatedCarbsGramsPerServing?: number;
+  estimatedFatGramsPerServing?: number;
   translations: Array<{
     locale: AppLocale;
     title: string;
@@ -234,6 +237,9 @@ export type RecipeView = {
   estimatedCookingMinutes: number;
   servings: number;
   estimatedCaloriesPerServing: number | null;
+  estimatedProteinGramsPerServing: number | null;
+  estimatedCarbsGramsPerServing: number | null;
+  estimatedFatGramsPerServing: number | null;
   isFavorite: boolean;
   createdAt: string;
   updatedAt: string;

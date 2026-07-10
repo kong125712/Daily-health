@@ -328,6 +328,9 @@ async function createRecipes(tx: Prisma.TransactionClient, profileId: string, re
         estimatedCookingMinutes: integerValue(record, "estimatedCookingMinutes", 30),
         servings: integerValue(record, "servings", 1),
         estimatedCaloriesPerServing: optionalInteger(record, "estimatedCaloriesPerServing"),
+        estimatedProteinGramsPerServing: optionalNumber(record, "estimatedProteinGramsPerServing"),
+        estimatedCarbsGramsPerServing: optionalNumber(record, "estimatedCarbsGramsPerServing"),
+        estimatedFatGramsPerServing: optionalNumber(record, "estimatedFatGramsPerServing"),
         isFavorite: booleanValue(record, "isFavorite"),
         createdAt: dateValue(record, "createdAt"),
         updatedAt: dateValue(record, "updatedAt")

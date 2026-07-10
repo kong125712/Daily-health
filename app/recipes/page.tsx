@@ -1,19 +1,23 @@
 "use client";
 
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Heart, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/client/api";
+import { apiFetch, isApiErrorWithCode } from "@/lib/client/api";
 import { ingredientName } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import type { AvoidRecipeInput, IngredientScanView, RecipePreferenceInput, RecipeView } from "@/lib/types/domain";
 import { EpicurePairingBadge } from "@/components/recipes/EpicurePairingBadge";
 import { defaultPreferences, RecipePreferenceForm } from "@/components/recipes/RecipePreferenceForm";
 import { RecipeCard } from "@/components/recipes/RecipeCard";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 
 type SourceMode = "latest" | "previous" | "manual" | "recipe";
 type EpicureStatus = "connected" | "missing" | "failed" | null;
+type GenerateOptions = { overrideRecipeId?: string; refresh?: boolean; allowLocalFallback?: boolean };
+
+const localFallbackCode = "LOCAL_RECIPE_FALLBACK_AVAILABLE";
 
 function manualIngredients(text: string) {
   return text
@@ -41,6 +45,14 @@ function recipeAvoidanceSummary(recipe: RecipeView, locale: string): AvoidRecipe
   };
 }
 
+function mergeRecipeById(recipes: RecipeView[], recipe: RecipeView) {
+  const exists = recipes.some((item) => item.id === recipe.id);
+  if (!exists) {
+    return [recipe, ...recipes];
+  }
+  return recipes.map((item) => (item.id === recipe.id ? recipe : item));
+}
+
 export default function RecipesPage() {
   const { profileId, locale, t } = useApp();
   const [sourceMode, setSourceMode] = useState<SourceMode>("latest");
@@ -54,6 +66,7 @@ export default function RecipesPage() {
   const [loading, setLoading] = useState(false);
   const [epicureStatus, setEpicureStatus] = useState<EpicureStatus>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [pendingLocalFallback, setPendingLocalFallback] = useState<GenerateOptions | null>(null);
 
   function showToast(message: string, type: "success" | "error" | "info" = "info") {
     setToast({ message, type });
@@ -86,7 +99,7 @@ export default function RecipesPage() {
     });
   }, [locale, profileId, scanId, sourceRecipeId]);
 
-  async function generate(options: { overrideRecipeId?: string; refresh?: boolean } = {}) {
+  async function generate(options: GenerateOptions = {}) {
     if (!profileId) return;
     setLoading(true);
     try {
@@ -104,21 +117,46 @@ export default function RecipesPage() {
           manualIngredients: sourceMode === "manual" && !options.overrideRecipeId ? manualIngredients(manualText) : [],
           preferences,
           avoidRecipes: options.refresh ? recipes.map((recipe) => recipeAvoidanceSummary(recipe, locale)) : [],
-          refreshNonce: options.refresh ? `${Date.now()}` : undefined
+          refreshNonce: options.refresh ? `${Date.now()}` : undefined,
+          allowLocalFallback: Boolean(options.allowLocalFallback)
         }
       });
       setRecipes(response.recipes);
       setEpicureStatus(response.epicureStatus);
     } catch (error) {
+      if (isApiErrorWithCode(error, localFallbackCode)) {
+        setPendingLocalFallback(options);
+        return;
+      }
       showToast(error instanceof Error ? error.message : t("common.error"), "error");
     } finally {
       setLoading(false);
     }
   }
 
+  function handleRecipeChanged(updated: RecipeView) {
+    setRecipes((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    setSavedRecipes((current) => (
+      updated.isFavorite
+        ? mergeRecipeById(current, updated)
+        : current.filter((item) => item.id !== updated.id)
+    ));
+  }
+
   return (
     <main className="page-shell">
       <Toast toast={toast} />
+      <ConfirmDialog
+        open={Boolean(pendingLocalFallback)}
+        title={t("recipes.localFallbackTitle")}
+        message={t("recipes.localFallbackMessage")}
+        onCancel={() => setPendingLocalFallback(null)}
+        onConfirm={() => {
+          const options = pendingLocalFallback ?? {};
+          setPendingLocalFallback(null);
+          void generate({ ...options, allowLocalFallback: true });
+        }}
+      />
       <section className="page-header">
         <h1 className="page-title">{t("recipes.title")}</h1>
         <p className="page-subtitle">{t("recipes.subtitle")}</p>
@@ -180,11 +218,34 @@ export default function RecipesPage() {
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
-            onChanged={(updated) => setRecipes((current) => current.map((item) => (item.id === updated.id ? updated : item)))}
+            onChanged={handleRecipeChanged}
             onSimilar={(selected) => void generate({ overrideRecipeId: selected.id })}
             onToast={showToast}
           />
         ))}
+      </section>
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Heart className="h-5 w-5 text-leaf" aria-hidden="true" />
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("recipes.savedRecipes")}</h2>
+          </div>
+          <span className="rounded-md bg-slate-100 px-2 py-1 text-sm font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+            {savedRecipes.length}
+          </span>
+        </div>
+        {savedRecipes.length === 0 ? <EmptyState message={t("myRecipes.empty")} /> : null}
+        <div className="grid gap-4 xl:grid-cols-3">
+          {savedRecipes.map((recipe) => (
+            <RecipeCard
+              key={`saved-${recipe.id}`}
+              recipe={recipe}
+              onChanged={handleRecipeChanged}
+              onSimilar={(selected) => void generate({ overrideRecipeId: selected.id })}
+              onToast={showToast}
+            />
+          ))}
+        </div>
       </section>
     </main>
   );

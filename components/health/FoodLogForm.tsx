@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FoodLogView, MealCategory } from "@/lib/types/domain";
 import { useApp } from "@/lib/i18n/I18nProvider";
@@ -41,10 +41,14 @@ export function FoodLogForm({
 }) {
   const { t } = useApp();
   const [form, setForm] = useState<FoodFormState>(emptyState);
+  const [expanded, setExpanded] = useState(false);
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState("");
 
   useEffect(() => {
+    if (editing) {
+      setExpanded(true);
+    }
     setForm(
       editing
         ? {
@@ -61,6 +65,25 @@ export function FoodLogForm({
         : emptyState
     );
   }, [editing]);
+
+  function closeForm() {
+    setForm(emptyState);
+    setEstimateError("");
+    setExpanded(false);
+    onCancel();
+  }
+
+  if (!expanded && !editing) {
+    return (
+      <section className="panel flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("food.addManual")}</h2>
+        <button className="btn-primary" type="button" onClick={() => setExpanded(true)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          {t("common.add")}
+        </button>
+      </section>
+    );
+  }
 
   async function estimateNutrition() {
     if (!form.nameEn.trim()) return;
@@ -88,7 +111,10 @@ export function FoodLogForm({
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit(form);
-        if (!editing) setForm(emptyState);
+        if (!editing) {
+          setForm(emptyState);
+          setExpanded(false);
+        }
       }}
     >
       <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("food.addManual")}</h2>
@@ -140,11 +166,9 @@ export function FoodLogForm({
           <Sparkles className="h-4 w-4" aria-hidden="true" />
           {estimating ? t("food.estimatingNutrition") : t("food.estimateNutrition")}
         </button>
-        {editing ? (
-          <button className="btn-secondary" type="button" onClick={onCancel}>
-            {t("common.cancel")}
-          </button>
-        ) : null}
+        <button className="btn-secondary" type="button" onClick={closeForm}>
+          {t("common.cancel")}
+        </button>
       </div>
       {estimateError ? <p className="text-sm text-rose-600 dark:text-rose-300">{estimateError}</p> : null}
     </form>

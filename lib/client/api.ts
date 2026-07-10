@@ -10,6 +10,25 @@ type ApiOptions = {
   locale?: AppLocale;
 };
 
+export class ApiError extends Error {
+  statusCode: number | null;
+  data: unknown;
+
+  constructor(message: string, statusCode: number | null, data: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+    this.data = data;
+  }
+}
+
+export function isApiErrorWithCode(error: unknown, code: string) {
+  if (!(error instanceof ApiError) || typeof error.data !== "object" || error.data === null) {
+    return false;
+  }
+  return "code" in error.data && error.data.code === code;
+}
+
 function localizedMessage(locale: AppLocale | undefined, en: string, zh: string) {
   return locale === "zh-CN" ? zh : en;
 }
@@ -49,7 +68,7 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
       stack: fetchError instanceof Error ? fetchError.stack ?? null : null,
       details: { requestPath: path, kind: "network" }
     });
-    throw new Error(message);
+    throw new ApiError(message, null, null);
   }
 
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -82,7 +101,7 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
         preview: responseText.slice(0, 300)
       }
     });
-    throw new Error(message);
+    throw new ApiError(message, response.status || null, null);
   }
 
   let data: unknown;
@@ -107,7 +126,7 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
         preview: responseText.slice(0, 300)
       }
     });
-    throw new Error(message);
+    throw new ApiError(message, response.status || null, null);
   }
 
   if (!response.ok) {
@@ -131,7 +150,7 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
         statusText: response.statusText
       }
     });
-    throw new Error(message);
+    throw new ApiError(message, response.status, data);
   }
 
   return data as T;

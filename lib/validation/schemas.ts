@@ -107,6 +107,9 @@ export const generatedRecipeSchema = z.object({
   estimatedCookingMinutes: z.number().int().min(1).max(240),
   servings: z.number().int().min(1).max(12),
   estimatedCaloriesPerServing: z.number().int().min(0).max(3000).optional(),
+  estimatedProteinGramsPerServing: z.number().min(0).max(1000).optional(),
+  estimatedCarbsGramsPerServing: z.number().min(0).max(1000).optional(),
+  estimatedFatGramsPerServing: z.number().min(0).max(1000).optional(),
   translations: z.array(z.object({
     locale: appLocaleSchema,
     title: z.string().trim().min(1).max(140),
@@ -160,7 +163,8 @@ export const generateRecipesRequestSchema = z.object({
   })).max(30).default([]),
   preferences: recipePreferenceSchema,
   avoidRecipes: z.array(avoidRecipeSchema).max(12).default([]),
-  refreshNonce: z.string().trim().max(80).optional()
+  refreshNonce: z.string().trim().max(80).optional(),
+  allowLocalFallback: z.boolean().default(false)
 });
 
 export const foodLogInputSchema = z.object({

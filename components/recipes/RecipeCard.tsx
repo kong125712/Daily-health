@@ -16,6 +16,10 @@ type RecipeCardProps = {
   onToast: (message: string, type?: "success" | "error" | "info") => void;
 };
 
+function formatMacro(value: number | null) {
+  return value == null ? "-" : `${Math.round(value * 10) / 10} g`;
+}
+
 export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCardProps) {
   const { locale, profileId, t } = useApp();
   const [open, setOpen] = useState(false);
@@ -114,6 +118,20 @@ export function RecipeCard({ recipe, onChanged, onSimilar, onToast }: RecipeCard
         <span>{recipe.servings} servings</span>
         <span>{recipe.difficulty}</span>
         <span>{recipe.estimatedCaloriesPerServing ?? "-"} {t("common.calories")}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+        <div className="rounded-md bg-slate-50 p-2 dark:bg-slate-950">
+          <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroProtein")}</span>
+          <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedProteinGramsPerServing)}</span>
+        </div>
+        <div className="rounded-md bg-slate-50 p-2 dark:bg-slate-950">
+          <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroCarbs")}</span>
+          <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedCarbsGramsPerServing)}</span>
+        </div>
+        <div className="rounded-md bg-slate-50 p-2 dark:bg-slate-950">
+          <span className="block text-xs text-slate-500 dark:text-slate-400">{t("food.macroFat")}</span>
+          <span className="font-semibold text-slate-950 dark:text-white">{formatMacro(recipe.estimatedFatGramsPerServing)}</span>
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <button className="btn-primary" type="button" onClick={() => void saveRecipe()} disabled={recipe.isFavorite}>

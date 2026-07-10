@@ -98,6 +98,9 @@ export async function createRecipes(input: {
           estimatedCookingMinutes: recipe.estimatedCookingMinutes,
           servings: recipe.servings,
           estimatedCaloriesPerServing: recipe.estimatedCaloriesPerServing,
+          estimatedProteinGramsPerServing: recipe.estimatedProteinGramsPerServing,
+          estimatedCarbsGramsPerServing: recipe.estimatedCarbsGramsPerServing,
+          estimatedFatGramsPerServing: recipe.estimatedFatGramsPerServing,
           translations: {
             create: recipe.translations.map((translation) => ({
               locale: translation.locale,

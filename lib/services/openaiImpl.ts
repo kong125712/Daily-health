@@ -121,7 +121,7 @@ export async function generateRecipesWithOpenAIImpl(input: {
     "Avoid unsafe cooking instructions, medical claims, diet-treatment advice, and allergy assumptions.",
     "Return both English and Simplified Chinese content whenever possible.",
     "Use structured JSON only with a top-level recipes array of exactly 3 items.",
-    "Do not calculate recipe calories yourself. Set estimatedCaloriesPerServing to 0; the server will calculate calories after generation from the final ingredient amounts and seasonings.",
+    "Do not calculate recipe calories or macros yourself. Set estimatedCaloriesPerServing, estimatedProteinGramsPerServing, estimatedCarbsGramsPerServing, and estimatedFatGramsPerServing to 0; the server will calculate nutrition after generation from the final ingredient amounts and seasonings.",
     "For each recipe include referenceImageQuery: 3 to 6 English words describing the finished dish for selecting a food reference photo. Use the most common English dish name when possible, such as tomato egg stir fry or chicken curry. Do not use broad labels such as egg breakfast, protein meal, or healthy bowl. Use concrete dish/ingredient words, no brands and no punctuation.",
     "",
     "Visible or user-confirmed ingredients:",
@@ -137,7 +137,7 @@ export async function generateRecipesWithOpenAIImpl(input: {
     JSON.stringify(input.preferences),
     "",
     "Schema summary:",
-    "recipes[].cuisineStyle, difficulty easy|medium|hard, referenceImageQuery, estimatedCookingMinutes, servings, estimatedCaloriesPerServing, translations[en and zh-CN], ingredients, steps, tips, missingIngredients.",
+    "recipes[].cuisineStyle, difficulty easy|medium|hard, referenceImageQuery, estimatedCookingMinutes, servings, estimatedCaloriesPerServing, estimatedProteinGramsPerServing, estimatedCarbsGramsPerServing, estimatedFatGramsPerServing, translations[en and zh-CN], ingredients, steps, tips, missingIngredients.",
     `The user is currently viewing the app in ${input.locale}.`
   ].join("\n");
 
