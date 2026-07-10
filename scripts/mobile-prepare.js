@@ -11,6 +11,7 @@ const outputDir = path.join(root, "mobile-web", "nodejs");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
+const requiredRuntimePackages = ["styled-jsx", "client-only"];
 
 function assertDirectory(dir, message) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
@@ -240,6 +241,21 @@ function writeNodePackage() {
   );
 }
 
+function copyRuntimePackage(packageName) {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`, { paths: [root] });
+  const packageRoot = path.dirname(packageJsonPath);
+  const target = path.join(outputDir, "node_modules", ...packageName.split("/"));
+
+  removeIfExists(target);
+  copyDirectory(packageRoot, target);
+}
+
+function copyRequiredRuntimePackages() {
+  for (const packageName of requiredRuntimePackages) {
+    copyRuntimePackage(packageName);
+  }
+}
+
 function assertPreparedServer() {
   const requiredFiles = [
     path.join(outputDir, "server.js"),
@@ -248,6 +264,8 @@ function assertPreparedServer() {
     path.join(outputDir, ".next", "BUILD_ID"),
     path.join(outputDir, ".next", "server", "app", "page.js"),
     path.join(outputDir, "node_modules", "next", "package.json"),
+    path.join(outputDir, "node_modules", "styled-jsx", "package.json"),
+    path.join(outputDir, "node_modules", "client-only", "package.json"),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
 
@@ -274,6 +292,7 @@ function main() {
 
   removeIfExists(outputDir);
   copyDirectory(serverDir, outputDir);
+  copyRequiredRuntimePackages();
   copyDirectory(nextStaticDir, path.join(outputDir, ".next", "static"));
   if (fs.existsSync(publicDir)) {
     copyDirectory(publicDir, path.join(outputDir, "public"));
