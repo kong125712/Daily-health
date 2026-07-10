@@ -46,12 +46,16 @@ Recipe calories are not trusted from the text-generation model. After recipes ar
 
 ## Installation
 
+Preferred setup uses the package manager pinned by this repository:
+
 ```bash
-npm install
-npx prisma generate --schema database/schema.prisma
-npx prisma migrate dev --schema database/schema.prisma
-npm run dev
+pnpm install
+pnpm exec prisma generate --schema database/schema.prisma
+pnpm exec prisma migrate dev --schema database/schema.prisma
+pnpm run dev
 ```
+
+`npm install` is also supported for basic local setup. The repository includes `.npmrc` with `legacy-peer-deps=true` because `capacitor-nodejs@0.0.1` declares an old Capacitor peer range even though the Android project patches and builds it with the current Capacitor app.
 
 Open the local URL printed by Next.js.
 
@@ -105,11 +109,11 @@ Set `RECIPE_IMAGE_PROVIDER=gemini` only if you want Gemini to generate recipe re
 ## Commands
 
 ```bash
-npx prisma generate --schema database/schema.prisma
-npx prisma migrate dev --schema database/schema.prisma
-npm run dev
-npm run lint
-npm run build
+pnpm exec prisma generate --schema database/schema.prisma
+pnpm exec prisma migrate dev --schema database/schema.prisma
+pnpm run dev
+pnpm run lint
+pnpm run build
 ```
 
 ## Fast set up guidance
@@ -117,11 +121,14 @@ npm run build
 
 ## Android APK Packaging
 
-Daily Health can be packaged as an Android WebView client through Capacitor:
+Daily Health can be packaged as an Android APK through Capacitor. The APK includes the Capacitor WebView plus an embedded Node.js process that runs the Next.js standalone server locally on the phone.
 
 ```bash
-npm run mobile:sync
-npm run mobile:apk
+pnpm run build
+pnpm run mobile:prepare
+pnpm run mobile:sync
+cd android
+gradlew assembleDebug
 ```
 
 The generated debug APK is written by Gradle to:
@@ -138,19 +145,11 @@ outputs/DailyHealth-debug.apk
 
 Important mobile behavior:
 
-- The APK is a mobile client for Daily Health.
-- Because the app uses Next.js API routes, Prisma/SQLite, OpenAI server-side keys, and optional Epicure MCP server-side calls, the phone app must connect to a running Daily Health server.
-- On first launch, the APK shows a server URL screen. Enter a reachable URL such as `http://192.168.1.20:3000` for same-Wi-Fi testing, or a production HTTPS URL after deployment.
-- Do not enter the GitHub repository URL in the APK. GitHub shows source code pages and does not run the app API routes.
-- To bake a fixed server URL into the native wrapper before syncing, run Capacitor with `MOBILE_SERVER_URL` set, then rebuild the APK.
-
-Example on Windows PowerShell:
-
-```powershell
-$env:MOBILE_SERVER_URL="https://your-domain.com"
-npm run mobile:sync
-npm run mobile:apk
-```
+- The APK starts a local server at `http://127.0.0.1:34189` inside the app sandbox.
+- The first mobile screen waits for that local server, then opens Daily Health in the WebView.
+- SQLite data is copied from a bundled clean template into a writable persistent app data directory on first launch.
+- AI features still need API keys or a configured local/cloud provider. The in-app setup/status pages should be used to confirm what is configured.
+- `capacitor-nodejs` is old and only used as a compatibility bridge for the embedded Node runtime. The build scripts include checks so an APK is not released if the embedded `.next`, `node_modules`, SQLite template, or native Node libraries are missing.
 
 ## GitHub APK Releases
 
