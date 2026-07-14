@@ -145,7 +145,7 @@ outputs/DailyHealth-debug.apk
 
 Important mobile behavior:
 
-- The APK starts a local server at `http://127.0.0.1:34189` inside the app sandbox.
+- The APK starts a local server at `http://127.0.0.1:34189` inside the app sandbox (configurable via `DAILY_HEALTH_MOBILE_PORT` when running `pnpm run mobile:prepare`; see `scripts/mobile-prepare.js`).
 - The first mobile screen waits for that local server, then opens Daily Health in the WebView.
 - SQLite data is copied from a bundled clean template into a writable persistent app data directory on first launch.
 - AI features still need API keys or a configured local/cloud provider. The in-app setup/status pages should be used to confirm what is configured.
@@ -170,9 +170,6 @@ ANDROID_KEY_PASSWORD
 ```
 
 `ANDROID_KEY_PASSWORD` is optional when it matches `ANDROID_KEYSTORE_PASSWORD`.
-
-## Some tricky problem faced during packaging to android
-[Pitfalls](./PITFALLS.md)
 
 ## Data Storage and Privacy
 

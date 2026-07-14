@@ -234,7 +234,62 @@ const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 This also means the port becomes genuinely configurable from one place
 (an env var) instead of a grep-and-replace across the repo.
 
-## General lessons
+## Pitfall 5: boot-screen polling fetch blocked by CORS, not by the network
+
+**Symptom:** the app launches, the embedded server logs show it started fine
+(`✓ Ready in ...ms`), but the WebView sits on the loading screen's progress
+bar forever. Meanwhile, opening the exact same URL directly (e.g. via `adb
+forward` + a desktop browser, or `chrome://inspect`) loads the app correctly.
+
+**Cause:** this one is easy to misdiagnose as a networking problem (cleartext
+traffic, mixed content, wrong port) because those all produce a similar
+"stuck spinning" symptom. But if a plain browser navigation to the same URL
+works, the server and networking are fine — the problem is specifically that
+the **fetch() call from inside the WebView is cross-origin**, and cross-origin
+fetch/XHR is subject to CORS, which plain top-level navigation is not.
+
+Capacitor's Android WebView serves your `webDir` content over
+`https://localhost` (or `http://localhost`, depending on `androidScheme`) by
+default. The boot screen's `fetch("http://127.0.0.1:<port>/api/runtime-status")`
+is therefore a request to a different origin (different scheme and/or host).
+Without an `Access-Control-Allow-Origin` response header, the browser
+receives the response over the wire but **blocks the page's JavaScript from
+reading it**, and `fetch()` rejects. A `try { ... } catch { /* not ready
+yet */ }` around that call — reasonable code, since the server genuinely
+isn't up yet during the first several polls — silently treats every future
+CORS failure exactly the same way as "still starting," so it retries forever
+and never surfaces the real problem.
+
+`cleartext: true` / `allowMixedContent: true` in `capacitor.config.ts` do
+**not** fix this. Those control whether the network request is allowed to go
+out at all (plaintext HTTP from a secure context); CORS is a separate check
+on whether the *response* can be read once it comes back. You can have both
+mixed-content and cleartext fully permitted and still be blocked here.
+
+**Fix:** add an `Access-Control-Allow-Origin` header to the one endpoint the
+WebView calls cross-origin before it navigates:
+
+```ts
+export async function GET(request: NextRequest) {
+  const response = /* ...build the normal response... */;
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  return response;
+}
+```
+
+You only need this on the bootstrap/health-check endpoint the boot screen
+polls — once it succeeds, the boot screen does
+`window.location.replace(serverOrigin)`, a full top-level navigation that
+makes the rest of the app same-origin with the server. Every other API route
+your app calls after that point is unaffected and doesn't need CORS headers.
+
+**How to tell CORS apart from an actual networking failure when debugging:**
+if a plain browser navigation (not a fetch from your app) to the exact same
+URL works, it's CORS, not the network. If *nothing* can reach the URL at all
+(navigation included), it's a real networking/port/cleartext problem —
+go back to Pitfall 4 and check the port, then check cleartext/mixed content
+settings.
+
 
 - **Don't trust the embedded engine to be capable of what your CI's Node is
   capable of.** Different major version, different V8 build flags, different
