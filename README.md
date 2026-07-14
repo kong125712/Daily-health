@@ -171,8 +171,8 @@ ANDROID_KEY_PASSWORD
 
 `ANDROID_KEY_PASSWORD` is optional when it matches `ANDROID_KEYSTORE_PASSWORD`.
 
-## Some problem faced during packaging android
-[Pitfalls](./Pitfalls.md)
+## Some tricky problem faced during packaging to android
+[Pitfalls](./PITFALLS.md)
 
 ## Data Storage and Privacy
 
