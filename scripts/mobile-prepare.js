@@ -11,7 +11,7 @@ const outputDir = path.join(root, "mobile-web", "nodejs");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
-const requiredRuntimePackages = ["styled-jsx", "client-only"];
+const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers"];
 
 function assertDirectory(dir, message) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
@@ -302,6 +302,7 @@ function assertPreparedServer() {
     path.join(outputDir, "node_modules", "next", "package.json"),
     path.join(outputDir, "node_modules", "styled-jsx", "package.json"),
     path.join(outputDir, "node_modules", "client-only", "package.json"),
+    path.join(outputDir, "node_modules", "@swc", "helpers", "package.json"),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
 
