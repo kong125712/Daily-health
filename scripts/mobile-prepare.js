@@ -11,6 +11,8 @@ const outputDir = path.join(root, "mobile-web", "nodejs");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
+const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
+const webEntryPath = path.join(root, "mobile-web", "index.html");
 const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite"];
 
 function assertDirectory(dir, message) {
@@ -231,7 +233,7 @@ Module._resolveFilename = function resolveNodeProtocol(request, parent, isMain, 
 const fs = require("fs");
 const path = require("path");
 
-const port = process.env.PORT || "34189";
+const port = process.env.PORT || "${mobileServerPort}";
 const host = "127.0.0.1";
 const dataDir = process.env.DAILY_HEALTH_DATA_DIR || path.resolve(__dirname, "..", "daily-health-data");
 const templateDb = path.join(__dirname, "data", "daily-health-template.db");
@@ -343,6 +345,38 @@ function assertPreparedServer() {
   }
 }
 
+function patchWebEntryPort() {
+  // mobile-web/index.html (the Capacitor webDir's boot screen) polls
+  // 127.0.0.1:<port> waiting for the embedded server to come up. That port
+  // and the Node bootstrap's port used to be two independent hardcoded
+  // literals in two different files — change one without the other and the
+  // WebView polls the wrong port forever, showing "Local server did not
+  // start" even though the server is actually up. Both now derive from the
+  // single `mobileServerPort` constant above.
+  if (!fs.existsSync(webEntryPath)) {
+    throw new Error(`Missing ${path.relative(root, webEntryPath)}.`);
+  }
+
+  const original = fs.readFileSync(webEntryPath, "utf8");
+  const placeholder = 'const localOrigin = "http://127.0.0.1:__DAILY_HEALTH_PORT__";';
+  const alreadyPatched = `const localOrigin = "http://127.0.0.1:${mobileServerPort}";`;
+
+  if (original.includes(alreadyPatched)) {
+    return; // Re-running mobile:prepare locally without a fresh git checkout — already up to date.
+  }
+
+  if (!original.includes(placeholder)) {
+    throw new Error(
+      `Could not find the port placeholder in ${path.relative(root, webEntryPath)}. ` +
+        "If you edited that file, make sure the loading screen still sets " +
+        '`const localOrigin = "http://127.0.0.1:__DAILY_HEALTH_PORT__";` so scripts/mobile-prepare.js can inject the port, ' +
+        "or restore it from git and re-run."
+    );
+  }
+
+  fs.writeFileSync(webEntryPath, original.split(placeholder).join(alreadyPatched));
+}
+
 function main() {
   assertDirectory(standaloneRoot, "Run `pnpm run build` before `pnpm run mobile:prepare`.");
   assertDirectory(nextStaticDir, "Missing .next/static. Run `pnpm run build` first.");
@@ -368,6 +402,7 @@ function main() {
   createDatabaseTemplate();
   writeBootstrap();
   writeNodePackage();
+  patchWebEntryPort();
   assertPreparedServer();
 
   const size = directorySize(outputDir);
