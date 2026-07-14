@@ -20,12 +20,18 @@ importers:
       '@google/generative-ai':
         specifier: ^0.24.1
         version: 0.24.1
+      '@next/env':
+        specifier: 15.5.19
+        version: 15.5.19
       '@prisma/client':
         specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
       '@swc/helpers':
         specifier: 0.5.15
         version: 0.5.15
+      caniuse-lite:
+        specifier: ^1.0.30001579
+        version: 1.0.30001799
       capacitor-nodejs:
         specifier: https://github.com/hampoelz/capacitor-nodejs/releases/download/v1.0.0-beta.9/capacitor-nodejs.tgz
         version: https://github.com/hampoelz/capacitor-nodejs/releases/download/v1.0.0-beta.9/capacitor-nodejs.tgz(@capacitor/core@8.4.1)
