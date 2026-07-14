@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
     cleartext: true
   },
   plugins: {
-    NodeJS: {
+    CapacitorNodeJS: {
       nodeDir: "nodejs"
     }
   },
