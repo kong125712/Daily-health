@@ -5,6 +5,12 @@ def releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
 def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: releaseKeystorePassword
 
+// CI passes these via -PdailyHealthVersionName=... -PdailyHealthVersionCode=... so a release's
+// tag actually ends up on the built APK. Local/manual builds that don't pass them keep the old
+// hardcoded defaults.
+def resolvedVersionName = project.hasProperty("dailyHealthVersionName") ? project.property("dailyHealthVersionName") : "1.0"
+def resolvedVersionCode = project.hasProperty("dailyHealthVersionCode") ? project.property("dailyHealthVersionCode").toInteger() : 1
+
 android {
     namespace = "com.dailyhealth.mobile"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -13,8 +19,8 @@ android {
         applicationId "com.dailyhealth.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

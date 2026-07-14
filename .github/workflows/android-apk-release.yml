@@ -147,13 +147,29 @@ jobs:
             } >> "$GITHUB_ENV"
           fi
 
+      - name: Resolve app version
+        run: |
+          VERSION_NAME="${RELEASE_TAG#v}"
+          if [[ -z "$VERSION_NAME" ]]; then
+            echo "::error::tag_name resolved to an empty version name."
+            exit 1
+          fi
+          {
+            echo "DAILY_HEALTH_VERSION_NAME=$VERSION_NAME"
+            echo "DAILY_HEALTH_VERSION_CODE=${{ github.run_number }}"
+          } >> "$GITHUB_ENV"
+
       - name: Build debug and release APKs
         run: |
           chmod +x android/gradlew
-          ./android/gradlew -p android assembleDebug assembleRelease
+          ./android/gradlew -p android \
+            -PdailyHealthVersionName="$DAILY_HEALTH_VERSION_NAME" \
+            -PdailyHealthVersionCode="$DAILY_HEALTH_VERSION_CODE" \
+            assembleDebug assembleRelease
 
       - name: Verify embedded APK contents
         run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name aapt | sort -V | tail -n1)"
           for apk in android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/release/app-release.apk; do
             echo "Checking $apk"
             ls -lh "$apk"
@@ -165,6 +181,16 @@ jobs:
             unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
             unzip -l "$apk" | grep -F "lib/arm64-v8a/libnode.so"
             unzip -l "$apk" | grep -F "lib/arm64-v8a/libnative-lib.so"
+
+            BADGING="$("$AAPT" dump badging "$apk")"
+            echo "$BADGING" | grep "versionName='$DAILY_HEALTH_VERSION_NAME'" || {
+              echo "::error::$apk was not built with versionName=$DAILY_HEALTH_VERSION_NAME. Got: $(echo "$BADGING" | grep -o "versionName='[^']*'")"
+              exit 1
+            }
+            echo "$BADGING" | grep "versionCode='$DAILY_HEALTH_VERSION_CODE'" || {
+              echo "::error::$apk was not built with versionCode=$DAILY_HEALTH_VERSION_CODE. Got: $(echo "$BADGING" | grep -o "versionCode='[^']*'")"
+              exit 1
+            }
           done
 
       - name: Prepare release artifacts
@@ -172,7 +198,6 @@ jobs:
           mkdir -p release-artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk "release-artifacts/DailyHealth-debug-${RELEASE_TAG}.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "release-artifacts/DailyHealth-release-${RELEASE_TAG}.apk"
-          git archive --format=zip --output "release-artifacts/DailyHealth-source-code-${RELEASE_TAG}.zip" HEAD
 
           if [[ "$ANDROID_SIGNING_MODE" == "temporary-ci-keystore" ]]; then
             cat > release-artifacts/SIGNING-NOTE.txt <<'EOF'

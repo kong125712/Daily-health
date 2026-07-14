@@ -11,7 +11,9 @@ const outputDir = path.join(root, "mobile-web", "nodejs");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
-const requiredRuntimePackages = ["styled-jsx", "client-only"];
+const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
+const webEntryPath = path.join(root, "mobile-web", "index.html");
+const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite"];
 
 function assertDirectory(dir, message) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
@@ -231,7 +233,7 @@ Module._resolveFilename = function resolveNodeProtocol(request, parent, isMain, 
 const fs = require("fs");
 const path = require("path");
 
-const port = process.env.PORT || "34189";
+const port = process.env.PORT || "${mobileServerPort}";
 const host = "127.0.0.1";
 const dataDir = process.env.DAILY_HEALTH_DATA_DIR || path.resolve(__dirname, "..", "daily-health-data");
 const templateDb = path.join(__dirname, "data", "daily-health-template.db");
@@ -292,6 +294,34 @@ function copyRequiredRuntimePackages() {
   }
 }
 
+function patchIncompatibleUnicodeRegex() {
+  // The embedded Node/V8 build used by capacitor-nodejs cannot parse regex
+  // Unicode property escapes (\p{ID_Start}, \p{ID_Continue}, etc.) — it
+  // throws "Invalid property name in character class" at parse time.
+  // next/dist/compiled/zod-validation-error defines one of these as a
+  // top-level regex literal, and it's required unconditionally by
+  // next/dist/server/config.js on every server start, so it crashes before
+  // the app can even boot. Neuter it with an ASCII-only equivalent, which is
+  // only used for cosmetic dot-vs-bracket formatting of zod error paths.
+  const target = path.join(outputDir, "node_modules", "next", "dist", "compiled", "zod-validation-error", "index.js");
+  if (!fs.existsSync(target)) {
+    throw new Error(`Cannot patch Unicode-incompatible regex: missing ${path.relative(root, target)}.`);
+  }
+
+  const original = fs.readFileSync(target, "utf8");
+  const broken = "/[$_\\p{ID_Start}][$\\u200c\\u200d\\p{ID_Continue}]*/u";
+  const fixed = "/[$_A-Za-z][$\\u200c\\u200d\\w]*/";
+
+  if (!original.includes(broken)) {
+    throw new Error(
+      `Expected Unicode-property regex not found in ${path.relative(root, target)}. ` +
+        "The bundled next/zod-validation-error version likely changed; update this patch in scripts/mobile-prepare.js."
+    );
+  }
+
+  fs.writeFileSync(target, original.split(broken).join(fixed));
+}
+
 function assertPreparedServer() {
   const requiredFiles = [
     path.join(outputDir, "server.js"),
@@ -302,6 +332,9 @@ function assertPreparedServer() {
     path.join(outputDir, "node_modules", "next", "package.json"),
     path.join(outputDir, "node_modules", "styled-jsx", "package.json"),
     path.join(outputDir, "node_modules", "client-only", "package.json"),
+    path.join(outputDir, "node_modules", "@swc", "helpers", "package.json"),
+    path.join(outputDir, "node_modules", "@next", "env", "package.json"),
+    path.join(outputDir, "node_modules", "caniuse-lite", "package.json"),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
 
@@ -310,6 +343,38 @@ function assertPreparedServer() {
       throw new Error(`Embedded server is incomplete. Missing ${path.relative(root, file)}.`);
     }
   }
+}
+
+function patchWebEntryPort() {
+  // mobile-web/index.html (the Capacitor webDir's boot screen) polls
+  // 127.0.0.1:<port> waiting for the embedded server to come up. That port
+  // and the Node bootstrap's port used to be two independent hardcoded
+  // literals in two different files — change one without the other and the
+  // WebView polls the wrong port forever, showing "Local server did not
+  // start" even though the server is actually up. Both now derive from the
+  // single `mobileServerPort` constant above.
+  if (!fs.existsSync(webEntryPath)) {
+    throw new Error(`Missing ${path.relative(root, webEntryPath)}.`);
+  }
+
+  const original = fs.readFileSync(webEntryPath, "utf8");
+  const placeholder = 'const localOrigin = "http://127.0.0.1:__DAILY_HEALTH_PORT__";';
+  const alreadyPatched = `const localOrigin = "http://127.0.0.1:${mobileServerPort}";`;
+
+  if (original.includes(alreadyPatched)) {
+    return; // Re-running mobile:prepare locally without a fresh git checkout — already up to date.
+  }
+
+  if (!original.includes(placeholder)) {
+    throw new Error(
+      `Could not find the port placeholder in ${path.relative(root, webEntryPath)}. ` +
+        "If you edited that file, make sure the loading screen still sets " +
+        '`const localOrigin = "http://127.0.0.1:__DAILY_HEALTH_PORT__";` so scripts/mobile-prepare.js can inject the port, ' +
+        "or restore it from git and re-run."
+    );
+  }
+
+  fs.writeFileSync(webEntryPath, original.split(placeholder).join(alreadyPatched));
 }
 
 function main() {
@@ -329,6 +394,7 @@ function main() {
   removeIfExists(outputDir);
   copyDirectory(serverDir, outputDir);
   copyRequiredRuntimePackages();
+  patchIncompatibleUnicodeRegex();
   copyDirectory(nextStaticDir, path.join(outputDir, ".next", "static"));
   if (fs.existsSync(publicDir)) {
     copyDirectory(publicDir, path.join(outputDir, "public"));
@@ -336,6 +402,7 @@ function main() {
   createDatabaseTemplate();
   writeBootstrap();
   writeNodePackage();
+  patchWebEntryPort();
   assertPreparedServer();
 
   const size = directorySize(outputDir);
