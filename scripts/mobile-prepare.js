@@ -292,6 +292,34 @@ function copyRequiredRuntimePackages() {
   }
 }
 
+function patchIncompatibleUnicodeRegex() {
+  // The embedded Node/V8 build used by capacitor-nodejs cannot parse regex
+  // Unicode property escapes (\p{ID_Start}, \p{ID_Continue}, etc.) — it
+  // throws "Invalid property name in character class" at parse time.
+  // next/dist/compiled/zod-validation-error defines one of these as a
+  // top-level regex literal, and it's required unconditionally by
+  // next/dist/server/config.js on every server start, so it crashes before
+  // the app can even boot. Neuter it with an ASCII-only equivalent, which is
+  // only used for cosmetic dot-vs-bracket formatting of zod error paths.
+  const target = path.join(outputDir, "node_modules", "next", "dist", "compiled", "zod-validation-error", "index.js");
+  if (!fs.existsSync(target)) {
+    throw new Error(`Cannot patch Unicode-incompatible regex: missing ${path.relative(root, target)}.`);
+  }
+
+  const original = fs.readFileSync(target, "utf8");
+  const broken = "/[$_\\p{ID_Start}][$\\u200c\\u200d\\p{ID_Continue}]*/u";
+  const fixed = "/[$_A-Za-z][$\\u200c\\u200d\\w]*/";
+
+  if (!original.includes(broken)) {
+    throw new Error(
+      `Expected Unicode-property regex not found in ${path.relative(root, target)}. ` +
+        "The bundled next/zod-validation-error version likely changed; update this patch in scripts/mobile-prepare.js."
+    );
+  }
+
+  fs.writeFileSync(target, original.split(broken).join(fixed));
+}
+
 function assertPreparedServer() {
   const requiredFiles = [
     path.join(outputDir, "server.js"),
@@ -332,6 +360,7 @@ function main() {
   removeIfExists(outputDir);
   copyDirectory(serverDir, outputDir);
   copyRequiredRuntimePackages();
+  patchIncompatibleUnicodeRegex();
   copyDirectory(nextStaticDir, path.join(outputDir, ".next", "static"));
   if (fs.existsSync(publicDir)) {
     copyDirectory(publicDir, path.join(outputDir, "public"));
