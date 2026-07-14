@@ -171,6 +171,10 @@ ANDROID_KEY_PASSWORD
 
 `ANDROID_KEY_PASSWORD` is optional when it matches `ANDROID_KEYSTORE_PASSWORD`.
 
+## Tricky problem during packaging android apk
+[Pitfalls](./PITFALLS.md)
+
+
 ## Data Storage and Privacy
 
 Important health, recipe, recognition, and history data is stored in local SQLite through Prisma. Browser LocalStorage stores only lightweight device-specific values: the anonymous profile ID, selected locale, and selected theme. API keys and database URLs are server-side only and are never sent to client components.
