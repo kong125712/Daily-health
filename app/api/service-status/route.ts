@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getServiceStatus } from "@/lib/services/serviceStatus";
-import { handleRouteError, jsonOk, localeFromRequest } from "@/lib/server/http";
+import { handleRouteError, jsonOk, localeFromRequest, profileIdFromRequest } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const locale = localeFromRequest(request);
   try {
-    const status = await getServiceStatus();
+    const status = await getServiceStatus(profileIdFromRequest(request));
     return jsonOk(status);
   } catch (error) {
     return handleRouteError(error, locale);

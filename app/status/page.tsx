@@ -119,7 +119,7 @@ function ServiceCard({ item }: { item: ServiceStatusItem }) {
 }
 
 export default function StatusPage() {
-  const { locale, t } = useApp();
+  const { locale, profileId, t } = useApp();
   const [status, setStatus] = useState<ServiceStatusResponse | null>(null);
   const [errorLogs, setErrorLogs] = useState<AppErrorLogView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +130,7 @@ export default function StatusPage() {
     setError("");
     try {
       const [response, logsResponse] = await Promise.all([
-        apiFetch<ServiceStatusResponse>("/api/service-status", { locale }),
+        apiFetch<ServiceStatusResponse>("/api/service-status", { profileId, locale }),
         apiFetch<ErrorLogsResponse>("/api/error-logs?limit=8", { locale }).catch(() => ({ logs: [] }))
       ]);
       setStatus(response);
@@ -140,7 +140,7 @@ export default function StatusPage() {
     } finally {
       setLoading(false);
     }
-  }, [locale, t]);
+  }, [locale, profileId, t]);
 
   useEffect(() => {
     void load();

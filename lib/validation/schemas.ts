@@ -35,6 +35,15 @@ export const settingsUpdateSchema = z.object({
   defaultWaterTargetMl: z.number().int().min(250).max(10000).optional()
 });
 
+export const aiSettingsUpdateSchema = z.object({
+  profileId: profileIdSchema,
+  provider: z.enum(["gemini", "openai"]),
+  apiKey: z.string().trim().min(20).max(512).optional(),
+  clearApiKey: z.boolean().optional()
+}).refine((value) => !(value.apiKey && value.clearApiKey), {
+  message: "Provide a new API key or clear the existing key, not both."
+});
+
 export const recognizedIngredientSchema = z.object({
   normalizedName: z.string().trim().min(1).max(120),
   displayNameEn: z.string().trim().min(1).max(120),

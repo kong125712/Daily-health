@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     let generated = await generateRecipesWithOpenAI({
+      profileId: body.profileId,
       locale: body.locale,
       ingredients,
       pairings: epicure.pairings,
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!generated || !generated.ok) {
-      const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
+      const isGemini = generated?.provider === "gemini";
       if (!body.allowLocalFallback) {
         return localFallbackResponse(locale);
       }

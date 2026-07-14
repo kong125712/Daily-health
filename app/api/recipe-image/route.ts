@@ -1,7 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { jsonOk } from "@/lib/server/http";
+import { jsonOk, profileIdFromRequest } from "@/lib/server/http";
+import { resolveGeminiApiKey } from "@/lib/services/aiConfiguration";
 
 type RecipeImageProvider = "ai" | "gemini" | "local" | "replicate" | "themealdb" | "wikipedia" | "wikimedia";
 type RecipeImageGenerationProvider = "disabled" | "gemini" | "local" | "replicate";
@@ -38,6 +39,7 @@ type RecipeImageContext = {
   excludeUrls?: string[];
   excludeSourceTitles?: string[];
   locale?: string;
+  geminiApiKey?: string | null;
 };
 
 type AiSelectionResult = {
@@ -314,9 +316,10 @@ async function findWikimediaImages(query: string): Promise<RecipeImageCandidate[
     });
 }
 
-function getGeminiClient() {
-  if (!process.env.GEMINI_API_KEY) return null;
-  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+function getGeminiClient(apiKey?: string | null) {
+  const configuredKey = apiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
+  if (!configuredKey) return null;
+  return new GoogleGenerativeAI(configuredKey);
 }
 
 function getGeminiModelName() {
@@ -638,7 +641,7 @@ function parsePromptPlan(text: string): LocalImagePromptPlan | null {
 }
 
 async function generateLocalImagePromptPlanWithGemini(context: RecipeImageContext) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(context.geminiApiKey);
   if (!genAI) return null;
 
   const model = genAI.getGenerativeModel({
@@ -1143,8 +1146,7 @@ function geminiApiErrorText(payload: unknown) {
   return typeof error.message === "string" ? error.message : "unknown error";
 }
 
-async function requestGeneratedImageFromGemini(model: string, prompt: string) {
-  const apiKey = process.env.GEMINI_API_KEY;
+async function requestGeneratedImageFromGemini(model: string, prompt: string, apiKey: string | null) {
   if (!apiKey) return null;
 
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
@@ -1179,7 +1181,8 @@ async function requestGeneratedImageFromGemini(model: string, prompt: string) {
 }
 
 async function generateRecipeImageWithGemini(context: RecipeImageContext) {
-  if (!process.env.GEMINI_API_KEY) return null;
+  const apiKey = context.geminiApiKey?.trim() || process.env.GEMINI_API_KEY?.trim() || null;
+  if (!apiKey) return null;
 
   const cacheKey = recipeImageCacheKey(context, "gemini");
   if (generatedImageCache.has(cacheKey)) {
@@ -1188,7 +1191,7 @@ async function generateRecipeImageWithGemini(context: RecipeImageContext) {
 
   const prompt = generatedDishImagePrompt(context);
   for (const model of getGeminiImageModelNames()) {
-    const imageBlock = await requestGeneratedImageFromGemini(model, prompt);
+    const imageBlock = await requestGeneratedImageFromGemini(model, prompt, apiKey);
     if (!imageBlock) continue;
 
     const title = context.title ?? context.referenceImageQuery ?? context.queries?.[0] ?? "Generated dish";
@@ -1393,7 +1396,7 @@ async function imagePartFromUrl(candidate: RecipeImageCandidate) {
 }
 
 async function selectImageWithGemini(context: RecipeImageContext, candidates: RecipeImageCandidate[]) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(context.geminiApiKey);
   if (!genAI) return null;
 
   const visibleCandidates = candidates.slice(0, 4);
@@ -1466,7 +1469,7 @@ async function generateImageSearchQueriesWithGemini(
   context: RecipeImageContext,
   rejectedCandidates: RecipeImageCandidate[]
 ) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(context.geminiApiKey);
   if (!genAI) return [];
 
   const model = genAI.getGenerativeModel({
@@ -1526,7 +1529,7 @@ async function resolveRecipeImage(context: RecipeImageContext, useAi: boolean) {
         if (refinedAiImage) return refinedAiImage;
       }
 
-      if (candidates.length > 0 && !getGeminiClient()) {
+      if (candidates.length > 0 && !getGeminiClient(context.geminiApiKey)) {
         return toRecipeImage(candidates[0]);
       }
       return null;
@@ -1602,6 +1605,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = contextFromBody(await request.json());
+    const profileId = profileIdFromRequest(request);
+    if (profileId) {
+      context.geminiApiKey = await resolveGeminiApiKey(profileId);
+    }
     const image =
       await findApprovedCachedRecipeImage(context) ??
       await resolveRecipeImageBeforeGeneration(context) ??

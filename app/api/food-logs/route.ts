@@ -42,13 +42,14 @@ function needsNutritionEstimate(input: NutritionFields) {
   );
 }
 
-async function withAiNutritionEstimate<T extends NutritionFields>(input: T, locale: "en" | "zh-CN"): Promise<T> {
+async function withAiNutritionEstimate<T extends NutritionFields>(input: T, profileId: string, locale: "en" | "zh-CN"): Promise<T> {
   if (!needsNutritionEstimate(input)) {
     return input;
   }
 
   try {
     const result = await estimateFoodNutrition({
+      profileId,
       locale,
       nameEn: input.nameEn,
       nameZh: input.nameZh,
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
       return jsonOk({ log }, 201);
     }
     const parsed = foodLogInputSchema.parse(body);
-    const nutrition = await withAiNutritionEstimate(parsed, locale);
+    const nutrition = await withAiNutritionEstimate(parsed, parsed.profileId, locale);
     const log = await createFoodLog({
       profileId: parsed.profileId,
       recipeId: parsed.recipeId,
@@ -133,7 +134,7 @@ export async function PATCH(request: NextRequest) {
   const locale = localeFromRequest(request);
   try {
     const body = await parseJson(request, foodLogInputSchema.extend({ id: z.string().cuid() }));
-    const nutrition = await withAiNutritionEstimate(body, locale);
+    const nutrition = await withAiNutritionEstimate(body, body.profileId, locale);
     const log = await updateFoodLog({
       id: body.id,
       profileId: body.profileId,

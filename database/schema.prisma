@@ -36,6 +36,9 @@ model AppSettings {
   locale               String   @default("en")
   theme                String   @default("light")
   defaultWaterTargetMl Int      @default(2000)
+  aiProvider           String?
+  geminiApiKey         String?
+  openaiApiKey         String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   profile              Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)

@@ -1,5 +1,6 @@
 import type {
   EpicurePairing,
+  AppSettings,
   ExerciseLog,
   FoodLog,
   Prisma,
@@ -121,6 +122,14 @@ export function serializeProfile(profile: Profile) {
     dailyCalorieTarget: profile.dailyCalorieTarget,
     createdAt: toIso(profile.createdAt),
     updatedAt: toIso(profile.updatedAt)
+  };
+}
+
+export function serializeAppSettings(settings: AppSettings) {
+  return {
+    locale: settings.locale === "zh-CN" ? "zh-CN" : "en",
+    theme: settings.theme === "dark" || settings.theme === "system" ? settings.theme : "light",
+    defaultWaterTargetMl: settings.defaultWaterTargetMl
   };
 }
 

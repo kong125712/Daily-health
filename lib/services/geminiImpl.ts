@@ -14,9 +14,9 @@ import {
 } from "@/lib/validation/schemas";
 import { parseAiJson } from "@/lib/services/jsonParsing";
 
-function getGeminiClient() {
-  if (!process.env.GEMINI_API_KEY) return null;
-  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+function getGeminiClient(apiKey: string | null) {
+  if (!apiKey) return null;
+  return new GoogleGenerativeAI(apiKey);
 }
 
 function getGeminiModelName() {
@@ -59,10 +59,11 @@ async function retryTransientGemini<T>(operation: () => Promise<T>) {
 }
 
 export async function recognizeIngredientsWithGeminiImpl(input: {
+  apiKey: string | null;
   imageDataUrl: string;
   locale: AppLocale;
 }) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(input.apiKey);
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
   const matches = input.imageDataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
@@ -111,13 +112,14 @@ export async function recognizeIngredientsWithGeminiImpl(input: {
 }
 
 export async function generateRecipesWithGeminiImpl(input: {
+  apiKey: string | null;
   locale: AppLocale;
   ingredients: RecognizedIngredientInput[];
   pairings: EpicurePairingInput[];
   preferences: RecipePreferenceInput;
   avoidRecipes?: AvoidRecipeInput[];
 }) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(input.apiKey);
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
   const model = genAI.getGenerativeModel({
@@ -234,13 +236,14 @@ export async function generateRecipesWithGeminiImpl(input: {
 }
 
 export async function estimateFoodNutritionWithGeminiImpl(input: {
+  apiKey: string | null;
   locale: AppLocale;
   nameEn: string;
   nameZh?: string;
   calories?: number | null;
   notes?: string | null;
 }) {
-  const genAI = getGeminiClient();
+  const genAI = getGeminiClient(input.apiKey);
   if (!genAI) return { ok: false as const, reason: "missing_key" as const };
 
   const model = genAI.getGenerativeModel({

@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import type { AppLocale, ThemeMode } from "@/lib/types/domain";
+import { ensureAppSettingsSchema } from "@/lib/repositories/settingsSchema";
 
 export async function getOrCreateSettings(profileId: string) {
+  await ensureAppSettingsSchema();
   await prisma.profile.upsert({
     where: { id: profileId },
     update: {},

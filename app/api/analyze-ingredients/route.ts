@@ -9,12 +9,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await parseJson(request, analyzeIngredientsSchema);
     const recognized = await recognizeIngredientsWithOpenAI({
+      profileId: body.profileId,
       imageDataUrl: body.imageDataUrl,
       locale: body.locale
     });
 
     if (!recognized.ok) {
-      const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
+      const isGemini = recognized.provider === "gemini";
       return jsonMessageError(
         locale,
         isGemini ? "error.geminiRecognition" : "error.openaiRecognition",

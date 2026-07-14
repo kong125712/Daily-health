@@ -183,7 +183,16 @@ export async function exportProfileBackup(profileId: string): Promise<DailyHealt
     exportedAt: new Date().toISOString(),
     data: {
       profile: profile as RawRecord | null,
-      settings: settings as RawRecord | null,
+      settings: settings ? {
+        id: settings.id,
+        profileId: settings.profileId,
+        locale: settings.locale,
+        theme: settings.theme,
+        defaultWaterTargetMl: settings.defaultWaterTargetMl,
+        aiProvider: settings.aiProvider,
+        createdAt: settings.createdAt,
+        updatedAt: settings.updatedAt
+      } : null,
       ingredientScans: ingredientScans as RawRecord[],
       recognizedIngredients: recognizedIngredients as RawRecord[],
       epicurePairings: epicurePairings as RawRecord[],
@@ -229,6 +238,7 @@ async function createSettings(tx: Prisma.TransactionClient, profileId: string, s
     locale: stringValue(source, "locale", "en"),
     theme: stringValue(source, "theme", "light"),
     defaultWaterTargetMl: integerValue(source, "defaultWaterTargetMl", 2000),
+    aiProvider: optionalString(source, "aiProvider"),
     createdAt: dateValue(source, "createdAt"),
     updatedAt: dateValue(source, "updatedAt")
   };

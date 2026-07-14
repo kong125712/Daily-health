@@ -5,47 +5,61 @@ import type {
   RecognizedIngredientInput,
   RecipePreferenceInput
 } from "@/lib/types/domain";
-
-const provider = process.env.AI_PROVIDER || "openai";
+import { resolveAiConfiguration } from "@/lib/services/aiConfiguration";
 
 export async function recognizeIngredientsWithOpenAI(input: {
+  profileId: string;
   imageDataUrl: string;
   locale: AppLocale;
 }) {
-  if (provider === "gemini") {
+  const configuration = await resolveAiConfiguration(input.profileId);
+  if (configuration.provider === "gemini") {
     const { recognizeIngredientsWithGeminiImpl } = await import("./geminiImpl");
-    return recognizeIngredientsWithGeminiImpl(input);
+    const result = await recognizeIngredientsWithGeminiImpl({ ...input, apiKey: configuration.apiKey });
+    return result.ok ? result : { ...result, provider: configuration.provider };
   }
+
   const { recognizeIngredientsWithOpenAIImpl } = await import("./openaiImpl");
-  return recognizeIngredientsWithOpenAIImpl(input);
+  const result = await recognizeIngredientsWithOpenAIImpl({ ...input, apiKey: configuration.apiKey });
+  return result.ok ? result : { ...result, provider: configuration.provider };
 }
 
 export async function generateRecipesWithOpenAI(input: {
+  profileId: string;
   locale: AppLocale;
   ingredients: RecognizedIngredientInput[];
   pairings: EpicurePairingInput[];
   preferences: RecipePreferenceInput;
   avoidRecipes?: AvoidRecipeInput[];
 }) {
-  if (provider === "gemini") {
+  const configuration = await resolveAiConfiguration(input.profileId);
+  if (configuration.provider === "gemini") {
     const { generateRecipesWithGeminiImpl } = await import("./geminiImpl");
-    return generateRecipesWithGeminiImpl(input);
+    const result = await generateRecipesWithGeminiImpl({ ...input, apiKey: configuration.apiKey });
+    return result.ok ? result : { ...result, provider: configuration.provider };
   }
+
   const { generateRecipesWithOpenAIImpl } = await import("./openaiImpl");
-  return generateRecipesWithOpenAIImpl(input);
+  const result = await generateRecipesWithOpenAIImpl({ ...input, apiKey: configuration.apiKey });
+  return result.ok ? result : { ...result, provider: configuration.provider };
 }
 
 export async function estimateFoodNutrition(input: {
+  profileId: string;
   locale: AppLocale;
   nameEn: string;
   nameZh?: string;
   calories?: number | null;
   notes?: string | null;
 }) {
-  if (provider === "gemini") {
+  const configuration = await resolveAiConfiguration(input.profileId);
+  if (configuration.provider === "gemini") {
     const { estimateFoodNutritionWithGeminiImpl } = await import("./geminiImpl");
-    return estimateFoodNutritionWithGeminiImpl(input);
+    const result = await estimateFoodNutritionWithGeminiImpl({ ...input, apiKey: configuration.apiKey });
+    return result.ok ? result : { ...result, provider: configuration.provider };
   }
+
   const { estimateFoodNutritionWithOpenAIImpl } = await import("./openaiImpl");
-  return estimateFoodNutritionWithOpenAIImpl(input);
+  const result = await estimateFoodNutritionWithOpenAIImpl({ ...input, apiKey: configuration.apiKey });
+  return result.ok ? result : { ...result, provider: configuration.provider };
 }

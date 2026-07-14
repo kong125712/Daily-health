@@ -14,18 +14,19 @@ import {
 } from "@/lib/validation/schemas";
 import { parseAiJson } from "@/lib/services/jsonParsing";
 
-function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
+function getOpenAIClient(apiKey: string | null) {
+  if (!apiKey) {
     return null;
   }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return new OpenAI({ apiKey });
 }
 
 export async function recognizeIngredientsWithOpenAIImpl(input: {
+  apiKey: string | null;
   imageDataUrl: string;
   locale: AppLocale;
 }) {
-  const client = getOpenAIClient();
+  const client = getOpenAIClient(input.apiKey);
   if (!client) {
     return { ok: false as const, reason: "missing_key" as const };
   }
@@ -82,13 +83,14 @@ export async function recognizeIngredientsWithOpenAIImpl(input: {
 }
 
 export async function generateRecipesWithOpenAIImpl(input: {
+  apiKey: string | null;
   locale: AppLocale;
   ingredients: RecognizedIngredientInput[];
   pairings: EpicurePairingInput[];
   preferences: RecipePreferenceInput;
   avoidRecipes?: AvoidRecipeInput[];
 }) {
-  const client = getOpenAIClient();
+  const client = getOpenAIClient(input.apiKey);
   if (!client) {
     return { ok: false as const, reason: "missing_key" as const };
   }
@@ -172,13 +174,14 @@ export async function generateRecipesWithOpenAIImpl(input: {
 }
 
 export async function estimateFoodNutritionWithOpenAIImpl(input: {
+  apiKey: string | null;
   locale: AppLocale;
   nameEn: string;
   nameZh?: string;
   calories?: number | null;
   notes?: string | null;
 }) {
-  const client = getOpenAIClient();
+  const client = getOpenAIClient(input.apiKey);
   if (!client) {
     return { ok: false as const, reason: "missing_key" as const };
   }

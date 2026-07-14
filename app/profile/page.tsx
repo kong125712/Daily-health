@@ -1,6 +1,6 @@
 "use client";
 
-import { Save, Target, UserRound } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Save, Target, Trash2, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/client/api";
 import { useApp } from "@/lib/i18n/I18nProvider";
@@ -10,6 +10,19 @@ import { Toast, type ToastState } from "@/components/shared/Toast";
 
 type ProfileResponse = {
   profile: UserProfileView;
+};
+
+type AiProvider = "gemini" | "openai";
+
+type AiSettingsResponse = {
+  aiSettings: {
+    provider: AiProvider;
+    model: string;
+    configured: boolean;
+    profileKeyConfigured: boolean;
+    environmentKeyConfigured: boolean;
+    providers: Record<AiProvider, { configured: boolean; profileKeyConfigured: boolean }>;
+  };
 };
 
 type ProfileForm = {
@@ -75,6 +88,11 @@ export default function ProfilePage() {
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AiProvider>("gemini");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AiSettingsResponse["aiSettings"] | null>(null);
+  const [savingAi, setSavingAi] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
   function showToast(message: string, type: "success" | "error" | "info" = "info") {
@@ -89,6 +107,16 @@ export default function ProfilePage() {
       .then((response) => setForm(formFromProfile(response.profile)))
       .catch((error: unknown) => showToast(error instanceof Error ? error.message : t("common.error"), "error"))
       .finally(() => setLoading(false));
+  }, [locale, profileId, t]);
+
+  useEffect(() => {
+    if (!profileId) return;
+    apiFetch<AiSettingsResponse>("/api/ai-settings", { profileId, locale })
+      .then((response) => {
+        setAiSettings(response.aiSettings);
+        setAiProvider(response.aiSettings.provider);
+      })
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : t("common.error"), "error"));
   }, [locale, profileId, t]);
 
   const targetPreview = useMemo(() => {
@@ -122,6 +150,39 @@ export default function ProfilePage() {
       showToast(error instanceof Error ? error.message : t("common.error"), "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveAiSettings(clearApiKey = false) {
+    if (!profileId) return;
+    const trimmedKey = apiKey.trim();
+    if (!clearApiKey && trimmedKey && trimmedKey.length < 20) {
+      showToast(t("profile.apiKeyInvalid"), "error");
+      return;
+    }
+
+    setSavingAi(true);
+    try {
+      const response = await apiFetch<AiSettingsResponse>("/api/ai-settings", {
+        method: "PATCH",
+        profileId,
+        locale,
+        body: {
+          profileId,
+          provider: aiProvider,
+          apiKey: clearApiKey || !trimmedKey ? undefined : trimmedKey,
+          clearApiKey
+        }
+      });
+      setAiSettings(response.aiSettings);
+      setAiProvider(response.aiSettings.provider);
+      setApiKey("");
+      setShowApiKey(false);
+      showToast(t(clearApiKey ? "profile.apiKeyCleared" : "profile.apiKeySaved"), "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t("common.error"), "error");
+    } finally {
+      setSavingAi(false);
     }
   }
 
@@ -210,6 +271,80 @@ export default function ProfilePage() {
             </p>
           </div>
         </section>
+      </section>
+
+      <section className="panel mt-4 grid gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-mint text-leaf dark:bg-emerald-950 dark:text-emerald-200">
+            <KeyRound className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{t("profile.aiSettings")}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{t("profile.aiSettingsDescription")}</p>
+          </div>
+        </div>
+
+        <form className="grid gap-4 md:grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)]" onSubmit={(event) => { event.preventDefault(); void saveAiSettings(); }}>
+          <label className="grid gap-1">
+            <span className="field-label">{t("profile.aiProvider")}</span>
+            <select className="field-input" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)} disabled={savingAi}>
+              <option value="gemini">{t("profile.aiProviderGemini")}</option>
+              <option value="openai">{t("profile.aiProviderOpenai")}</option>
+            </select>
+          </label>
+
+          <label className="grid gap-1">
+            <span className="field-label">{t("profile.apiKey")}</span>
+            <span className="relative block">
+              <input
+                className="field-input pr-11"
+                type={showApiKey ? "text" : "password"}
+                value={apiKey}
+                placeholder={t("profile.apiKeyPlaceholder")}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={savingAi}
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+              <button
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-500 transition hover:text-leaf disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-emerald-300"
+                type="button"
+                title={showApiKey ? t("profile.hideApiKey") : t("profile.showApiKey")}
+                aria-label={showApiKey ? t("profile.hideApiKey") : t("profile.showApiKey")}
+                disabled={savingAi}
+                onClick={() => setShowApiKey((current) => !current)}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+              </button>
+            </span>
+          </label>
+
+          <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {aiSettings?.providers[aiProvider].configured ? t("profile.apiKeyConfigured") : t("profile.apiKeyMissing")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {aiSettings?.providers[aiProvider].profileKeyConfigured ? (
+                <button
+                  className="icon-button"
+                  type="button"
+                  title={t("profile.clearApiKey")}
+                  aria-label={t("profile.clearApiKey")}
+                  disabled={savingAi}
+                  onClick={() => void saveAiSettings(true)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+              <button className="btn-primary" type="submit" disabled={savingAi}>
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {savingAi ? t("common.loading") : t("profile.saveApiKey")}
+              </button>
+            </div>
+          </div>
+        </form>
       </section>
     </main>
   );

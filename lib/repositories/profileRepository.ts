@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/db";
 import type { ActivityLevel, CalorieGoal, ProfileGender } from "@/lib/types/domain";
-import { serializeProfile } from "@/lib/repositories/serializers";
+import { serializeAppSettings, serializeProfile } from "@/lib/repositories/serializers";
+import { ensureAppSettingsSchema } from "@/lib/repositories/settingsSchema";
 import { profileIdSchema } from "@/lib/validation/schemas";
 
 export async function ensureProfile(profileId: string) {
   const id = profileIdSchema.parse(profileId);
+  await ensureAppSettingsSchema();
 
   await prisma.profile.upsert({
     where: { id },
@@ -25,7 +27,7 @@ export async function ensureProfile(profileId: string) {
 
   return {
     profile: serializeProfile(await prisma.profile.findUniqueOrThrow({ where: { id } })),
-    settings
+    settings: serializeAppSettings(settings)
   };
 }
 

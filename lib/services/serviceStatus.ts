@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { ServiceStatusItem, ServiceStatusResponse, ServiceStatusState } from "@/lib/types/domain";
 import { DEFAULT_EPICURE_MCP_URL } from "@/lib/services/epicureService";
+import { defaultAiProvider, resolveAiConfiguration, resolveGeminiApiKey } from "@/lib/services/aiConfiguration";
 
 function envValue(name: string) {
   return process.env[name]?.trim() ?? "";
@@ -115,10 +116,10 @@ async function checkDatabase(): Promise<ServiceStatusItem> {
   }
 }
 
-async function checkAi(): Promise<ServiceStatusItem> {
-  const provider = aiProvider();
+async function checkAi(configuration: Awaited<ReturnType<typeof resolveAiConfiguration>>): Promise<ServiceStatusItem> {
+  const provider = configuration.provider;
   const keyName = provider === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
-  const configured = hasEnv(keyName);
+  const configured = Boolean(configuration.apiKey);
   return {
     id: "ai",
     state: configured ? "ok" : "warning",
@@ -128,21 +129,22 @@ async function checkAi(): Promise<ServiceStatusItem> {
     summaryZh: configured ? `${provider} 已配置。` : `${provider} API key 未配置。`,
     detailsEn: [
       `Provider: ${provider}`,
-      `Model: ${aiModel()}`,
-      `${keyName}: ${maskedConfigured(keyName)}`
+      `Model: ${configuration.model}`,
+      `${keyName}: ${configured ? "configured" : "missing"}`,
+      `Key source: ${configuration.usesProfileKey ? "this device" : "environment"}`
     ],
     detailsZh: [
       `服务商：${provider}`,
-      `模型：${aiModel()}`,
-      `${keyName}：${zhConfigured(keyName)}`
+      `模型：${configuration.model}`,
+      `${keyName}：${configured ? "已配置" : "未配置"}`,
+      `密钥来源：${configuration.usesProfileKey ? "这台设备" : "环境变量"}`
     ]
   };
 }
 
-async function checkNutrition(): Promise<ServiceStatusItem> {
-  const provider = aiProvider();
-  const keyName = provider === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
-  const configured = hasEnv(keyName);
+async function checkNutrition(configuration: Awaited<ReturnType<typeof resolveAiConfiguration>>): Promise<ServiceStatusItem> {
+  const provider = configuration.provider;
+  const configured = Boolean(configuration.apiKey);
   return {
     id: "nutrition",
     state: configured ? "ok" : "warning",
@@ -235,7 +237,7 @@ async function checkEpicure(): Promise<ServiceStatusItem> {
   }
 }
 
-async function checkLocalImage(): Promise<ServiceStatusItem> {
+async function checkLocalImage(geminiApiKey: string | null): Promise<ServiceStatusItem> {
   const provider = recipeImageProvider();
 
   if (provider === "disabled") {
@@ -252,7 +254,7 @@ async function checkLocalImage(): Promise<ServiceStatusItem> {
   }
 
   if (provider === "gemini") {
-    const configured = hasEnv("GEMINI_API_KEY");
+    const configured = Boolean(geminiApiKey);
     const model = envValue("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image";
     return {
       id: "localImage",
@@ -354,16 +356,27 @@ async function checkRecipeImages(): Promise<ServiceStatusItem> {
   };
 }
 
-export async function getServiceStatus(): Promise<ServiceStatusResponse> {
+export async function getServiceStatus(profileId?: string | null): Promise<ServiceStatusResponse> {
+  const fallbackProfileId = profileId ?? null;
+  const environmentProvider = defaultAiProvider();
+  const configuration: Awaited<ReturnType<typeof resolveAiConfiguration>> = fallbackProfileId
+    ? await resolveAiConfiguration(fallbackProfileId)
+    : {
+        provider: environmentProvider,
+        apiKey: environmentProvider === "gemini" ? envValue("GEMINI_API_KEY") || null : envValue("OPENAI_API_KEY") || null,
+        usesProfileKey: false,
+        model: aiModel()
+      };
+  const geminiApiKey = fallbackProfileId ? await resolveGeminiApiKey(fallbackProfileId) : envValue("GEMINI_API_KEY") || null;
   const items = await Promise.all([
     checkApp(),
     checkDatabase(),
-    checkAi(),
-    checkNutrition(),
+    checkAi(configuration),
+    checkNutrition(configuration),
     checkRecipeImages(),
     checkMealDb(),
     checkEpicure(),
-    checkLocalImage()
+    checkLocalImage(geminiApiKey)
   ]);
   const overall = overallState(items);
 

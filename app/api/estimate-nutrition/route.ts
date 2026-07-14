@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await parseJson(request, foodNutritionEstimateRequestSchema);
     const result = await estimateFoodNutrition({
+      profileId: body.profileId,
       locale,
       nameEn: body.nameEn,
       nameZh: body.nameZh,
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
-      const isGemini = (process.env.AI_PROVIDER || "openai") === "gemini";
+      const isGemini = result.provider === "gemini";
       return jsonMessageError(locale, isGemini ? "error.geminiNutrition" : "error.openaiNutrition", 503);
     }
 

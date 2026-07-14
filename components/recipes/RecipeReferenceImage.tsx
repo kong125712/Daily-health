@@ -127,6 +127,7 @@ function recipeImageInfo(recipe: RecipeView, locale: AppLocale) {
 async function fetchRecipeImage(
   recipe: RecipeView,
   locale: AppLocale,
+  profileId: string | null,
   excludeUrls: string[] = [],
   excludeSourceTitles: string[] = []
 ) {
@@ -135,7 +136,8 @@ async function fetchRecipeImage(
     method: "POST",
     headers: {
       accept: "application/json",
-      "content-type": "application/json"
+      "content-type": "application/json",
+      ...(profileId ? { "x-profile-id": profileId } : {})
     },
     body: JSON.stringify({
       ...info,
@@ -151,7 +153,7 @@ async function fetchRecipeImage(
 }
 
 export function RecipeReferenceImage({ recipe, compact = false, onResolved }: RecipeReferenceImageProps) {
-  const { locale, t } = useApp();
+  const { locale, profileId, t } = useApp();
   const translation = recipeTranslation(recipe, locale);
   const title = translation?.title ?? recipe.referenceImageQuery ?? recipe.cuisineStyle;
   const pinnedImage = recipe.referenceImage;
@@ -192,7 +194,7 @@ export function RecipeReferenceImage({ recipe, compact = false, onResolved }: Re
     async function loadImage() {
       const initialExcludeUrls = claimedUrlsForOtherRecipes(recipe.id);
       const initialExcludeSourceTitles = claimedSourceTitlesForOtherRecipes(recipe.id);
-      const resolvedImage = await fetchRecipeImage(recipe, locale, initialExcludeUrls, initialExcludeSourceTitles);
+      const resolvedImage = await fetchRecipeImage(recipe, locale, profileId, initialExcludeUrls, initialExcludeSourceTitles);
       if (!isActive) return;
 
       if (!resolvedImage) {
@@ -215,7 +217,7 @@ export function RecipeReferenceImage({ recipe, compact = false, onResolved }: Re
 
       const retryExcludeUrls = Array.from(new Set([...initialExcludeUrls, resolvedImage.url]));
       const retryExcludeSourceTitles = Array.from(new Set([...initialExcludeSourceTitles, resolvedImage.sourceTitle]));
-      const retryImage = await fetchRecipeImage(recipe, locale, retryExcludeUrls, retryExcludeSourceTitles);
+      const retryImage = await fetchRecipeImage(recipe, locale, profileId, retryExcludeUrls, retryExcludeSourceTitles);
       if (!isActive) return;
 
       if (retryImage && claimImage(recipe.id, retryImage)) {
@@ -247,7 +249,7 @@ export function RecipeReferenceImage({ recipe, compact = false, onResolved }: Re
       releaseImage(recipe.id, claimedImageRef.current);
       claimedImageRef.current = null;
     };
-  }, [locale, onResolved, pinnedImage, queryKey, recipe, imageInfo.queries.length]);
+  }, [locale, onResolved, pinnedImage, profileId, queryKey, recipe, imageInfo.queries.length]);
 
   return (
     <div className={`relative overflow-hidden rounded-md bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-emerald-950 dark:via-slate-900 dark:to-amber-950 ${compact ? "aspect-[16/9]" : "aspect-[4/3]"}`}>
