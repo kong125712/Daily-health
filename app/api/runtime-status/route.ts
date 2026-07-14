@@ -197,6 +197,7 @@ function notes(mode: RuntimeConnectionMode, isHttps: boolean, provider: RuntimeI
 
 export async function GET(request: NextRequest) {
   const locale = localeFromRequest(request);
+  let response: Response;
   try {
     const protocol = requestProtocol(request);
     const hostWithPort = requestHost(request);
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
     const isHttps = protocol === "https";
     const state = mode === "loopback" || (mode === "public" && !isHttps) ? "warning" : "ok";
     const { notesEn, notesZh } = notes(mode, isHttps, image.provider);
-    const response: RuntimeStatusResponse = {
+    const payload: RuntimeStatusResponse = {
       checkedAt: new Date().toISOString(),
       state,
       serverOrigin: `${protocol}://${hostWithPort}`,
@@ -222,8 +223,18 @@ export async function GET(request: NextRequest) {
       notesEn,
       notesZh
     };
-    return jsonOk(response);
+    response = jsonOk(payload);
   } catch (error) {
-    return handleRouteError(error, locale);
+    response = handleRouteError(error, locale);
   }
+
+  // The Capacitor WebView's boot screen (mobile-web/index.html) polls this
+  // endpoint from https://localhost while the embedded server runs on
+  // http://127.0.0.1:<port> — a different origin, so without an explicit
+  // Access-Control-Allow-Origin header the browser silently blocks the
+  // response and the boot screen spins forever even though the server is
+  // up. Once the boot screen redirects (window.location.replace) the rest
+  // of the app is same-origin, so this is the only route that needs it.
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  return response;
 }
