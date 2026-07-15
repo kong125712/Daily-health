@@ -327,13 +327,41 @@ function patchIncompatibleUnicodeRegex() {
 }
 
 function removePrismaNativeEngines() {
-  const prismaClientDir = path.join(outputDir, "node_modules", ".prisma", "client");
-  if (!fs.existsSync(prismaClientDir)) return;
+  const pendingDirectories = [outputDir];
+  const removed = [];
 
-  for (const entry of fs.readdirSync(prismaClientDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !/query_engine.*\.(?:node|so|dylib)$/i.test(entry.name)) continue;
-    fs.rmSync(path.join(prismaClientDir, entry.name), { force: true });
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop();
+    if (!directory) continue;
+
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+        continue;
+      }
+      if (!entry.isFile() || !/query_engine.*\.(?:node|so|dylib)$/i.test(entry.name)) continue;
+
+      fs.rmSync(entryPath, { force: true });
+      removed.push(path.relative(outputDir, entryPath));
+    }
   }
+
+  if (removed.length > 0) {
+    console.log(`Removed ${removed.length} host Prisma query engine file(s) from the embedded server.`);
+  }
+}
+
+function findPrismaNativeEngines(directory, result = []) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      findPrismaNativeEngines(entryPath, result);
+    } else if (entry.isFile() && /query_engine.*\.(?:node|so|dylib)$/i.test(entry.name)) {
+      result.push(entryPath);
+    }
+  }
+  return result;
 }
 
 function assertPreparedServer() {
@@ -358,6 +386,15 @@ function assertPreparedServer() {
     if (!fs.existsSync(file)) {
       throw new Error(`Embedded server is incomplete. Missing ${path.relative(root, file)}.`);
     }
+  }
+
+  const nativeEngines = findPrismaNativeEngines(outputDir);
+  if (nativeEngines.length > 0) {
+    throw new Error(
+      `Embedded server still contains host Prisma query engines: ${nativeEngines
+        .map((file) => path.relative(root, file))
+        .join(", ")}.`
+    );
   }
 }
 
