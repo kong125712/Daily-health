@@ -28,7 +28,9 @@ export function BottomNavigation() {
               }`}
             >
               <Icon className="h-5 w-5" aria-hidden="true" />
-              <span className="max-w-full truncate px-0.5 text-[11px] sm:text-xs">{t(item.label)}</span>
+              <span className="min-h-[2.3em] max-w-full break-words px-0.5 text-center text-[11px] leading-[1.15] sm:text-xs">
+                {t(item.label)}
+              </span>
             </Link>
           );
         })}
