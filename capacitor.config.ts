@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorNodeJS: {
       nodeDir: "nodejs"
+    },
+    SystemBars: {
+      insetsHandling: "css"
     }
   },
   android: {

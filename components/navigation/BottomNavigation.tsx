@@ -12,7 +12,7 @@ export function BottomNavigation() {
   const pathname = usePathname();
   const { t } = useApp();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95" aria-label="Mobile navigation">
+    <nav className="bottom-navigation fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pt-2 backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95" aria-label="Mobile navigation">
       <div className="mx-auto grid max-w-xl grid-cols-6 gap-1">
         {mobileItems.map((item) => {
           const Icon = item.icon;

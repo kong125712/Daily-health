@@ -4,6 +4,8 @@
 
 :root {
   color-scheme: light;
+  --app-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --app-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 .dark {
@@ -12,10 +14,15 @@
 
 body {
   min-height: 100vh;
+  padding-top: var(--app-safe-top);
   background:
     linear-gradient(120deg, rgba(228, 244, 236, 0.95), rgba(234, 244, 255, 0.9) 45%, rgba(255, 249, 226, 0.86)),
     #f8fafc;
   color: #17211c;
+}
+
+.bottom-navigation {
+  padding-bottom: calc(0.5rem + var(--app-safe-bottom));
 }
 
 .dark body {
