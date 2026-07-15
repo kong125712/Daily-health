@@ -37,6 +37,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "styled-jsx": "5.1.6",
+    "v8-compile-cache": "2.4.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {

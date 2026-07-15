@@ -14,7 +14,7 @@ const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
 const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 const webEntryPath = path.join(root, "mobile-web", "index.html");
-const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite"];
+const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite", "v8-compile-cache"];
 const requiredApiRoutes = ["health", "runtime-status", "profile", "ai-settings"];
 
 function assertDirectory(dir, message) {
@@ -250,6 +250,12 @@ if (!fs.existsSync(databasePath) || fs.statSync(databasePath).size === 0) {
   fs.copyFileSync(templateDb, databasePath);
 }
 
+// Speeds up cold starts: caches V8's compiled bytecode for the (large) Next.js
+// server bundle across app launches instead of re-parsing it from scratch every
+// time. Must be required before the heavy requires below to take effect on them.
+process.env.V8_COMPILE_CACHE_CACHE_DIR = path.join(dataDir, ".v8-compile-cache");
+require("v8-compile-cache");
+
 process.env.NODE_ENV = "production";
 process.env.PORT = port;
 process.env.HOSTNAME = host;
@@ -379,6 +385,7 @@ function assertPreparedServer() {
     path.join(outputDir, "node_modules", "@swc", "helpers", "package.json"),
     path.join(outputDir, "node_modules", "@next", "env", "package.json"),
     path.join(outputDir, "node_modules", "caniuse-lite", "package.json"),
+    path.join(outputDir, "node_modules", "v8-compile-cache", "package.json"),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
 
