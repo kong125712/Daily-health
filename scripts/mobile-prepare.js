@@ -14,6 +14,7 @@ const sizeLimitBytes = 200 * 1024 * 1024;
 const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 const webEntryPath = path.join(root, "mobile-web", "index.html");
 const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite"];
+const requiredApiRoutes = ["runtime-status", "profile", "ai-settings"];
 
 function assertDirectory(dir, message) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
@@ -329,6 +330,7 @@ function assertPreparedServer() {
     path.join(outputDir, "package.json"),
     path.join(outputDir, ".next", "BUILD_ID"),
     path.join(outputDir, ".next", "server", "app", "page.js"),
+    ...requiredApiRoutes.map((route) => path.join(outputDir, ".next", "server", "app", "api", route, "route.js")),
     path.join(outputDir, "node_modules", "next", "package.json"),
     path.join(outputDir, "node_modules", "styled-jsx", "package.json"),
     path.join(outputDir, "node_modules", "client-only", "package.json"),
