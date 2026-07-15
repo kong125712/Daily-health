@@ -14,7 +14,7 @@ const sizeLimitBytes = 200 * 1024 * 1024;
 const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 const webEntryPath = path.join(root, "mobile-web", "index.html");
 const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite"];
-const requiredApiRoutes = ["runtime-status", "profile", "ai-settings"];
+const requiredApiRoutes = ["health", "runtime-status", "profile", "ai-settings"];
 
 function assertDirectory(dir, message) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
