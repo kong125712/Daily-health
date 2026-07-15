@@ -1,6 +1,5 @@
 "use client";
 
-import { Capacitor, registerPlugin } from "@capacitor/core";
 import { generateFallbackRecipes } from "@/lib/services/fallbackRecipeService";
 import {
   estimateFoodNutritionWithGeminiImpl,
@@ -52,6 +51,17 @@ type NativePluginHeader = {
   methods: Array<{ name: string; rtype: "promise" }>;
 };
 
+type NativeCapacitorBridge = {
+  PluginHeaders?: NativePluginHeader[];
+  nativePromise?: (pluginName: string, methodName: string, options?: unknown) => Promise<unknown>;
+};
+
+type NativeWindow = typeof globalThis & {
+  androidBridge?: unknown;
+  webkit?: { messageHandlers?: { bridge?: unknown } };
+  Capacitor?: NativeCapacitorBridge;
+};
+
 type LocalSettings = {
   locale: AppLocale;
   theme: ThemeMode;
@@ -74,6 +84,7 @@ const databaseName = "daily_health";
 const sqliteMethodNames = ["createConnection", "open", "execute", "run", "query"];
 let sqlite: SqlitePlugin | null = null;
 let readyPromise: Promise<void> | null = null;
+let nativeBridgePromise: Promise<void> | null = null;
 
 export class MobileApiError extends Error {
   statusCode: number;
@@ -88,15 +99,61 @@ export class MobileApiError extends Error {
 }
 
 export function usesNativeMobileDatabase() {
-  return Capacitor.isNativePlatform() && ["android", "ios"].includes(Capacitor.getPlatform());
+  if (typeof window === "undefined") return false;
+  const nativeWindow = window as NativeWindow;
+  return Boolean(nativeWindow.androidBridge || nativeWindow.webkit?.messageHandlers?.bridge);
+}
+
+function nativeBridgeIsReady() {
+  const nativeWindow = globalThis as NativeWindow;
+  return typeof nativeWindow.Capacitor?.nativePromise === "function";
+}
+
+function waitForNativeBridge() {
+  if (!usesNativeMobileDatabase() || nativeBridgeIsReady()) {
+    return Promise.resolve();
+  }
+
+  if (nativeBridgePromise) return nativeBridgePromise;
+
+  nativeBridgePromise = new Promise<void>((resolve, reject) => {
+    if (typeof document === "undefined") {
+      reject(new Error("The native Capacitor bridge is unavailable."));
+      return;
+    }
+
+    const finish = () => {
+      if (nativeBridgeIsReady()) {
+        resolve();
+      } else {
+        reject(new Error("The native Capacitor bridge did not initialize."));
+      }
+    };
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-daily-health-native-bridge="true"]');
+    if (existing) {
+      existing.addEventListener("load", finish, { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load the native Capacitor bridge.")), { once: true });
+      queueMicrotask(finish);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "/capacitor-native-bridge.js";
+    script.async = false;
+    script.dataset.dailyHealthNativeBridge = "true";
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => reject(new Error("Failed to load the native Capacitor bridge.")), { once: true });
+    document.head.append(script);
+  });
+
+  return nativeBridgePromise;
 }
 
 function ensureNativeSqlitePluginHeader() {
   if (!usesNativeMobileDatabase()) return;
 
-  const nativeWindow = globalThis as typeof globalThis & {
-    Capacitor?: { PluginHeaders?: NativePluginHeader[] };
-  };
+  const nativeWindow = globalThis as NativeWindow;
   const capacitorGlobal = nativeWindow.Capacitor;
   if (!capacitorGlobal) return;
 
@@ -111,8 +168,10 @@ function ensureNativeSqlitePluginHeader() {
   }
 }
 
-function getSqlite() {
+async function getSqlite() {
+  await waitForNativeBridge();
   ensureNativeSqlitePluginHeader();
+  const { registerPlugin } = await import("@capacitor/core");
   sqlite ??= registerPlugin<SqlitePlugin>("CapacitorSQLite");
   return sqlite;
 }
@@ -227,15 +286,18 @@ function defaultProfile(profileId: string): UserProfileView {
 }
 
 async function execute(statements: string) {
-  await getSqlite().execute({ database: databaseName, statements, transaction: true, readonly: false });
+  const nativeSqlite = await getSqlite();
+  await nativeSqlite.execute({ database: databaseName, statements, transaction: true, readonly: false });
 }
 
 async function run(statement: string, values: unknown[] = []) {
-  await getSqlite().run({ database: databaseName, statement, values, transaction: true, readonly: false });
+  const nativeSqlite = await getSqlite();
+  await nativeSqlite.run({ database: databaseName, statement, values, transaction: true, readonly: false });
 }
 
 async function query(statement: string, values: unknown[] = []) {
-  const result = await getSqlite().query({ database: databaseName, statement, values, readonly: false });
+  const nativeSqlite = await getSqlite();
+  const result = await nativeSqlite.query({ database: databaseName, statement, values, readonly: false });
   return result.values ?? [];
 }
 
@@ -244,7 +306,8 @@ async function ensureDatabase() {
   if (!readyPromise) {
     readyPromise = (async () => {
       try {
-        await getSqlite().createConnection({
+        const nativeSqlite = await getSqlite();
+        await nativeSqlite.createConnection({
           database: databaseName,
           version: 1,
           encrypted: false,
@@ -255,7 +318,8 @@ async function ensureDatabase() {
         // Opening an already-created connection is expected after a WebView resume.
       }
       try {
-        await getSqlite().open({ database: databaseName, readonly: false });
+        const nativeSqlite = await getSqlite();
+        await nativeSqlite.open({ database: databaseName, readonly: false });
       } catch {
         // The native plugin keeps an open connection for the WebView lifetime.
       }

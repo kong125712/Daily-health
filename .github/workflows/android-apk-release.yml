@@ -183,6 +183,8 @@ jobs:
             ls -lh "$apk"
             unzip -l "$apk" | grep -F "assets/public/nodejs/.next/BUILD_ID"
             unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/page.js"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/recipes/page.js"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/recipes.html"
             unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/health/route.js"
             unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/runtime-status/route.js"
             unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/profile/route.js"

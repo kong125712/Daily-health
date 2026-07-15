@@ -392,6 +392,8 @@ function assertPreparedServer() {
     path.join(outputDir, "package.json"),
     path.join(outputDir, ".next", "BUILD_ID"),
     path.join(outputDir, ".next", "server", "app", "page.js"),
+    path.join(outputDir, ".next", "server", "app", "recipes", "page.js"),
+    path.join(outputDir, ".next", "server", "app", "recipes.html"),
     ...requiredApiRoutes.map((route) => path.join(outputDir, ".next", "server", "app", "api", route, "route.js")),
     path.join(outputDir, "node_modules", "next", "package.json"),
     path.join(outputDir, "node_modules", "styled-jsx", "package.json"),
