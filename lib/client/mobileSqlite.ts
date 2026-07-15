@@ -47,6 +47,11 @@ type SqlitePlugin = {
   query(options: Record<string, unknown>): Promise<{ values?: SqliteRow[] }>;
 };
 
+type NativePluginHeader = {
+  name: string;
+  methods: Array<{ name: string; rtype: "promise" }>;
+};
+
 type LocalSettings = {
   locale: AppLocale;
   theme: ThemeMode;
@@ -66,7 +71,8 @@ type StoredRecord<T> = {
 };
 
 const databaseName = "daily_health";
-const sqlite = registerPlugin<SqlitePlugin>("CapacitorSQLite");
+const sqliteMethodNames = ["createConnection", "open", "execute", "run", "query"];
+let sqlite: SqlitePlugin | null = null;
 let readyPromise: Promise<void> | null = null;
 
 export class MobileApiError extends Error {
@@ -83,6 +89,32 @@ export class MobileApiError extends Error {
 
 export function usesNativeMobileDatabase() {
   return Capacitor.isNativePlatform() && ["android", "ios"].includes(Capacitor.getPlatform());
+}
+
+function ensureNativeSqlitePluginHeader() {
+  if (!usesNativeMobileDatabase()) return;
+
+  const nativeWindow = globalThis as typeof globalThis & {
+    Capacitor?: { PluginHeaders?: NativePluginHeader[] };
+  };
+  const capacitorGlobal = nativeWindow.Capacitor;
+  if (!capacitorGlobal) return;
+
+  const headers = capacitorGlobal.PluginHeaders ?? (capacitorGlobal.PluginHeaders = []);
+  if (!headers.some((header) => header.name === "CapacitorSQLite")) {
+    // The boot page changes to the loopback server origin. Capacitor can retain
+    // androidBridge across that navigation while losing the generated headers.
+    headers.push({
+      name: "CapacitorSQLite",
+      methods: sqliteMethodNames.map((name) => ({ name, rtype: "promise" }))
+    });
+  }
+}
+
+function getSqlite() {
+  ensureNativeSqlitePluginHeader();
+  sqlite ??= registerPlugin<SqlitePlugin>("CapacitorSQLite");
+  return sqlite;
 }
 
 function now() {
@@ -195,15 +227,15 @@ function defaultProfile(profileId: string): UserProfileView {
 }
 
 async function execute(statements: string) {
-  await sqlite.execute({ database: databaseName, statements, transaction: true, readonly: false });
+  await getSqlite().execute({ database: databaseName, statements, transaction: true, readonly: false });
 }
 
 async function run(statement: string, values: unknown[] = []) {
-  await sqlite.run({ database: databaseName, statement, values, transaction: true, readonly: false });
+  await getSqlite().run({ database: databaseName, statement, values, transaction: true, readonly: false });
 }
 
 async function query(statement: string, values: unknown[] = []) {
-  const result = await sqlite.query({ database: databaseName, statement, values, readonly: false });
+  const result = await getSqlite().query({ database: databaseName, statement, values, readonly: false });
   return result.values ?? [];
 }
 
@@ -212,7 +244,7 @@ async function ensureDatabase() {
   if (!readyPromise) {
     readyPromise = (async () => {
       try {
-        await sqlite.createConnection({
+        await getSqlite().createConnection({
           database: databaseName,
           version: 1,
           encrypted: false,
@@ -223,7 +255,7 @@ async function ensureDatabase() {
         // Opening an already-created connection is expected after a WebView resume.
       }
       try {
-        await sqlite.open({ database: databaseName, readonly: false });
+        await getSqlite().open({ database: databaseName, readonly: false });
       } catch {
         // The native plugin keeps an open connection for the WebView lifetime.
       }

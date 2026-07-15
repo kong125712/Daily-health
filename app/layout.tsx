@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { AppProvider } from "@/lib/i18n/I18nProvider";
 import { Navbar } from "@/components/navigation/Navbar";
@@ -19,6 +20,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script src="/capacitor-native-bridge.js" strategy="beforeInteractive" />
+      </head>
       <body>
         <AppProvider>
           <ClientErrorReporter />

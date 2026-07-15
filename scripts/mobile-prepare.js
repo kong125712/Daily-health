@@ -14,6 +14,7 @@ const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
 const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 const webEntryPath = path.join(root, "mobile-web", "index.html");
+const capacitorNativeBridgeFileName = "capacitor-native-bridge.js";
 const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite", "v8-compile-cache"];
 const requiredApiRoutes = ["health", "runtime-status", "profile", "ai-settings"];
 
@@ -304,6 +305,19 @@ function copyRequiredRuntimePackages() {
   }
 }
 
+function copyCapacitorNativeBridge() {
+  const capacitorAndroidRoot = findPackageRoot("@capacitor/android");
+  const source = path.join(capacitorAndroidRoot, "capacitor", "src", "main", "assets", "native-bridge.js");
+  const target = path.join(outputDir, "public", capacitorNativeBridgeFileName);
+
+  if (!fs.existsSync(source)) {
+    throw new Error(`Missing Capacitor Android bridge asset at ${source}.`);
+  }
+
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target);
+}
+
 function patchIncompatibleUnicodeRegex() {
   // The embedded Node/V8 build used by capacitor-nodejs cannot parse regex
   // Unicode property escapes (\p{ID_Start}, \p{ID_Continue}, etc.) — it
@@ -386,6 +400,7 @@ function assertPreparedServer() {
     path.join(outputDir, "node_modules", "@next", "env", "package.json"),
     path.join(outputDir, "node_modules", "caniuse-lite", "package.json"),
     path.join(outputDir, "node_modules", "v8-compile-cache", "package.json"),
+    path.join(outputDir, "public", capacitorNativeBridgeFileName),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
 
@@ -463,6 +478,7 @@ function main() {
   if (fs.existsSync(publicDir)) {
     copyDirectory(publicDir, path.join(outputDir, "public"));
   }
+  copyCapacitorNativeBridge();
   createDatabaseTemplate();
   writeBootstrap();
   writeNodePackage();
