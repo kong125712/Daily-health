@@ -2,6 +2,7 @@
 
 import { ImageOff, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/lib/client/api";
 import { ingredientName, recipeTranslation } from "@/lib/client/display";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import type { AppLocale, RecipeReferenceImageView, RecipeView } from "@/lib/types/domain";
@@ -132,24 +133,22 @@ async function fetchRecipeImage(
   excludeSourceTitles: string[] = []
 ) {
   const info = recipeImageInfo(recipe, locale);
-  const response = await fetch("/api/recipe-image", {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      ...(profileId ? { "x-profile-id": profileId } : {})
-    },
-    body: JSON.stringify({
+  try {
+    const data = await apiFetch<RecipeImageResponse>("/api/recipe-image", {
+      method: "POST",
+      profileId,
+      locale,
+      body: {
       ...info,
       excludeUrls,
       excludeSourceTitles,
       locale
-    })
-  });
-  if (!response.ok) return null;
-
-  const data = (await response.json()) as RecipeImageResponse;
-  return data.image;
+      }
+    });
+    return data.image;
+  } catch {
+    return null;
+  }
 }
 
 export function RecipeReferenceImage({ recipe, compact = false, onResolved }: RecipeReferenceImageProps) {

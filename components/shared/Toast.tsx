@@ -13,10 +13,10 @@ export function Toast({ toast }: { toast: ToastState }) {
   }
   const Icon = toast.type === "error" ? XCircle : CheckCircle2;
   return (
-    <div className="fixed right-4 top-4 z-50 max-w-sm rounded-md border border-slate-200 bg-white px-4 py-3 text-sm shadow-soft dark:border-slate-700 dark:bg-slate-900">
+    <div className="fixed inset-x-4 top-[calc(1rem+var(--app-safe-top))] z-50 mx-auto max-w-md rounded-md border border-slate-200 bg-white px-4 py-3 text-sm shadow-soft sm:left-auto sm:right-6 dark:border-slate-700 dark:bg-slate-900">
       <div className="flex items-start gap-3">
         <Icon className={toast.type === "error" ? "h-5 w-5 text-berry" : "h-5 w-5 text-leaf"} aria-hidden="true" />
-        <span className="text-slate-800 dark:text-slate-100">{toast.message}</span>
+        <span className="break-words text-slate-800 dark:text-slate-100">{toast.message}</span>
       </div>
     </div>
   );

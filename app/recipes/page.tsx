@@ -84,20 +84,34 @@ export default function RecipesPage() {
 
   useEffect(() => {
     if (!profileId) return;
-    Promise.all([
-      apiFetch<{ scans: IngredientScanView[] }>("/api/ingredient-scans", { profileId, locale }),
-      apiFetch<{ recipes: RecipeView[] }>("/api/recipes?favorites=1", { profileId, locale })
-    ]).then(([scanResponse, recipeResponse]) => {
-      setScans(scanResponse.scans);
-      setSavedRecipes(recipeResponse.recipes);
-      if (!scanId && scanResponse.scans[0]) {
-        setScanId(scanResponse.scans[0].id);
+    let active = true;
+
+    async function loadRecipeSources() {
+      try {
+        const [scanResponse, recipeResponse] = await Promise.all([
+          apiFetch<{ scans: IngredientScanView[] }>("/api/ingredient-scans", { profileId, locale }),
+          apiFetch<{ recipes: RecipeView[] }>("/api/recipes?favorites=1", { profileId, locale })
+        ]);
+        if (!active) return;
+
+        setScans(scanResponse.scans);
+        setSavedRecipes(recipeResponse.recipes);
+        setScanId((current) => current || scanResponse.scans[0]?.id || "");
+        setSourceRecipeId((current) => current || recipeResponse.recipes[0]?.id || "");
+      } catch (error) {
+        if (!active) return;
+        setToast({
+          message: error instanceof Error ? error.message : t("common.error"),
+          type: "error"
+        });
       }
-      if (!sourceRecipeId && recipeResponse.recipes[0]) {
-        setSourceRecipeId(recipeResponse.recipes[0].id);
-      }
-    });
-  }, [locale, profileId, scanId, sourceRecipeId]);
+    }
+
+    void loadRecipeSources();
+    return () => {
+      active = false;
+    };
+  }, [locale, profileId, t]);
 
   async function generate(options: GenerateOptions = {}) {
     if (!profileId) return;

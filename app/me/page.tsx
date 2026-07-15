@@ -5,6 +5,7 @@ import { Activity, DatabaseBackup, Download, Server, Settings, Upload, UserRound
 import { useRef, useState } from "react";
 import { useApp } from "@/lib/i18n/I18nProvider";
 import { apiFetch } from "@/lib/client/api";
+import { usesNativeMobileDatabase } from "@/lib/client/mobileSqlite";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { ConnectionModePanel } from "@/components/me/ConnectionModePanel";
 
@@ -57,17 +58,23 @@ export default function MePage() {
     if (!profileId) return;
     setExporting(true);
     try {
-      const response = await fetch("/api/backup", {
-        headers: {
-          accept: "application/json",
-          "x-profile-id": profileId,
-          "x-app-locale": locale
+      let blob: Blob;
+      if (usesNativeMobileDatabase()) {
+        const backup = await apiFetch<unknown>("/api/backup", { profileId, locale });
+        blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      } else {
+        const response = await fetch("/api/backup", {
+          headers: {
+            accept: "application/json",
+            "x-profile-id": profileId,
+            "x-app-locale": locale
+          }
+        });
+        if (!response.ok) {
+          throw new Error(t("me.exportFailed"));
         }
-      });
-      if (!response.ok) {
-        throw new Error(t("me.exportFailed"));
+        blob = await response.blob();
       }
-      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

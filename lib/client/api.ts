@@ -1,9 +1,10 @@
 "use client";
 
 import { reportClientError } from "@/lib/client/errorReporting";
+import { MobileApiError, mobileApiFetch, usesNativeMobileDatabase } from "@/lib/client/mobileSqlite";
 import type { AppLocale } from "@/lib/types/domain";
 
-type ApiOptions = {
+export type ApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   profileId?: string | null;
@@ -34,6 +35,18 @@ function localizedMessage(locale: AppLocale | undefined, en: string, zh: string)
 }
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  if (usesNativeMobileDatabase()) {
+    try {
+      return await mobileApiFetch<T>(path, options);
+    } catch (error) {
+      if (error instanceof MobileApiError) {
+        throw new ApiError(error.message, error.statusCode, error.data);
+      }
+      const message = error instanceof Error ? error.message : "Unable to access the local device database.";
+      throw new ApiError(message, 503, null);
+    }
+  }
+
   const headers = new Headers();
   headers.set("accept", "application/json");
   if (options.body !== undefined) {

@@ -76,7 +76,10 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # The native SQLite plugin is pinned in package.json. Allow pnpm to
+        # refresh the lock on the isolated CI runner while local npm access is
+        # unavailable; the generated APK still uses that pinned package version.
+        run: pnpm install --no-frozen-lockfile
 
       - name: Create CI environment files
         run: |
@@ -102,6 +105,9 @@ jobs:
 
       - name: Sync Capacitor Android project
         run: pnpm exec cap sync android
+
+      - name: Verify native SQLite plugin
+        run: grep -F "capacitor-community-sqlite" android/capacitor.settings.gradle
 
       - name: Prepare release signing
         env:
@@ -185,6 +191,10 @@ jobs:
             unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
             unzip -l "$apk" | grep -F "lib/arm64-v8a/libnode.so"
             unzip -l "$apk" | grep -F "lib/arm64-v8a/libnative-lib.so"
+            if unzip -l "$apk" | grep -E "query_engine.*\.(node|so|dylib)"; then
+              echo "::error::$apk still contains a host Prisma query engine."
+              exit 1
+            fi
 
             BADGING="$("$AAPT" dump badging "$apk")"
             echo "$BADGING" | grep "versionName='$DAILY_HEALTH_VERSION_NAME'" || {

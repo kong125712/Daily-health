@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from "react";
@@ -82,6 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [defaultWaterTargetMl, setDefaultWaterTargetMlState] = useState(2000);
   const [ready, setReady] = useState(false);
+  const pendingLocaleRef = useRef<AppLocale | null>(null);
 
   useEffect(() => {
     const storedLocale = normalizeLocale(localStorage.getItem("daily_health_locale"));
@@ -101,11 +103,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
       .then((response) => {
         const dbLocale = normalizeLocale(response.settings.locale);
-        setLocaleState(dbLocale);
-        persistLocale(dbLocale);
+        const selectedLocale = pendingLocaleRef.current ?? normalizeLocale(localStorage.getItem("daily_health_locale"));
+        setLocaleState(selectedLocale);
+        persistLocale(selectedLocale);
         setThemeState(response.settings.theme);
         localStorage.setItem("daily_health_theme", response.settings.theme);
         setDefaultWaterTargetMlState(response.settings.defaultWaterTargetMl);
+
+        if (selectedLocale !== dbLocale) {
+          void apiFetch<SettingsResponse>("/api/settings", {
+            method: "PATCH",
+            profileId: id,
+            locale: selectedLocale,
+            body: { profileId: id, locale: selectedLocale }
+          }).catch((error: unknown) => console.error(error));
+        }
       })
       .catch((error: unknown) => {
         console.error(error);
@@ -145,6 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const changeLocale = useCallback(
     (nextLocale: AppLocale) => {
+      pendingLocaleRef.current = nextLocale;
       setLocaleState(nextLocale);
       persistLocale(nextLocale);
       saveSettings({ locale: nextLocale });

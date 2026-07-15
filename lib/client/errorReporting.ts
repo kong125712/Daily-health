@@ -1,5 +1,7 @@
 "use client";
 
+import { mobileApiFetch, usesNativeMobileDatabase } from "@/lib/client/mobileSqlite";
+
 type ReportClientErrorInput = {
   source: string;
   severity?: "info" | "warning" | "error";
@@ -67,6 +69,14 @@ export async function reportClientError(input: ReportClientErrorInput) {
   };
 
   try {
+    if (usesNativeMobileDatabase()) {
+      await mobileApiFetch("/api/error-logs", {
+        method: "POST",
+        profileId: payload.profileId,
+        body: payload
+      });
+      return;
+    }
     await fetch("/api/error-logs", {
       method: "POST",
       headers: {

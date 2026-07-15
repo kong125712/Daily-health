@@ -9,6 +9,10 @@ const config: CapacitorConfig = {
     cleartext: true
   },
   plugins: {
+    CapacitorSQLite: {
+      androidIsEncryption: false,
+      iosIsEncryption: false
+    },
     CapacitorNodeJS: {
       nodeDir: "nodejs"
     },

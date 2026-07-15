@@ -8,6 +8,7 @@ const standaloneRoot = path.join(root, ".next", "standalone");
 const nextStaticDir = path.join(root, ".next", "static");
 const publicDir = path.join(root, "public");
 const outputDir = path.join(root, "mobile-web", "nodejs");
+const epicureBridgeSource = path.join(root, "scripts", "mobile-epicure-bridge.js");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
@@ -236,6 +237,7 @@ const path = require("path");
 
 const port = process.env.PORT || "${mobileServerPort}";
 const host = "127.0.0.1";
+const epicureBridgePort = Number(process.env.DAILY_HEALTH_EPICURE_PORT || Number(port) + 1);
 const dataDir = process.env.DAILY_HEALTH_DATA_DIR || path.resolve(__dirname, "..", "daily-health-data");
 const templateDb = path.join(__dirname, "data", "daily-health-template.db");
 const databasePath = path.join(dataDir, "daily-health.db");
@@ -254,6 +256,7 @@ process.env.HOSTNAME = host;
 process.env.DATABASE_URL = process.env.DATABASE_URL || "file:" + databasePath;
 process.env.NEXT_TELEMETRY_DISABLED = "1";
 
+require("./epicure-bridge.js").startEpicureBridge({ host, port: epicureBridgePort });
 require("./server.js");
 `;
   fs.writeFileSync(path.join(outputDir, "index.js"), bootstrap);
@@ -323,10 +326,21 @@ function patchIncompatibleUnicodeRegex() {
   fs.writeFileSync(target, original.split(broken).join(fixed));
 }
 
+function removePrismaNativeEngines() {
+  const prismaClientDir = path.join(outputDir, "node_modules", ".prisma", "client");
+  if (!fs.existsSync(prismaClientDir)) return;
+
+  for (const entry of fs.readdirSync(prismaClientDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !/query_engine.*\.(?:node|so|dylib)$/i.test(entry.name)) continue;
+    fs.rmSync(path.join(prismaClientDir, entry.name), { force: true });
+  }
+}
+
 function assertPreparedServer() {
   const requiredFiles = [
     path.join(outputDir, "server.js"),
     path.join(outputDir, "index.js"),
+    path.join(outputDir, "epicure-bridge.js"),
     path.join(outputDir, "package.json"),
     path.join(outputDir, ".next", "BUILD_ID"),
     path.join(outputDir, ".next", "server", "app", "page.js"),
@@ -382,6 +396,9 @@ function patchWebEntryPort() {
 function main() {
   assertDirectory(standaloneRoot, "Run `pnpm run build` before `pnpm run mobile:prepare`.");
   assertDirectory(nextStaticDir, "Missing .next/static. Run `pnpm run build` first.");
+  if (!fs.existsSync(epicureBridgeSource)) {
+    throw new Error("Missing scripts/mobile-epicure-bridge.js.");
+  }
 
   const serverFiles = findFiles(standaloneRoot, "server.js");
   if (serverFiles.length === 0) {
@@ -395,6 +412,7 @@ function main() {
 
   removeIfExists(outputDir);
   copyDirectory(serverDir, outputDir);
+  fs.copyFileSync(epicureBridgeSource, path.join(outputDir, "epicure-bridge.js"));
   copyRequiredRuntimePackages();
   patchIncompatibleUnicodeRegex();
   copyDirectory(nextStaticDir, path.join(outputDir, ".next", "static"));
@@ -404,6 +422,10 @@ function main() {
   createDatabaseTemplate();
   writeBootstrap();
   writeNodePackage();
+  // Android uses the Capacitor SQLite bridge for all application data. Native
+  // Prisma engines are host-specific and cannot run inside the Node runtime
+  // bundled with the APK, so keep them out of the packaged server entirely.
+  removePrismaNativeEngines();
   patchWebEntryPort();
   assertPreparedServer();
 
