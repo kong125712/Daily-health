@@ -15,7 +15,16 @@ const sizeLimitBytes = 200 * 1024 * 1024;
 const mobileServerPort = process.env.DAILY_HEALTH_MOBILE_PORT || "34189";
 const webEntryPath = path.join(root, "mobile-web", "index.html");
 const capacitorNativeBridgeFileName = "capacitor-native-bridge.js";
-const requiredRuntimePackages = ["styled-jsx", "client-only", "@swc/helpers", "@next/env", "caniuse-lite", "v8-compile-cache"];
+const requiredRuntimePackages = [
+  "styled-jsx",
+  "client-only",
+  "@swc/helpers",
+  "@next/env",
+  "caniuse-lite",
+  "v8-compile-cache",
+  "react",
+  "react-dom"
+];
 const requiredApiRoutes = ["health", "runtime-status", "profile", "ai-settings"];
 
 function assertDirectory(dir, message) {
@@ -81,17 +90,17 @@ function readPackageName(packageJsonPath) {
   }
 }
 
-function findPackageRoot(packageName) {
+function findPackageRoot(packageName, searchPaths = [root]) {
   const candidates = [];
 
   try {
-    candidates.push(path.dirname(require.resolve(`${packageName}/package.json`, { paths: [root] })));
+    candidates.push(path.dirname(require.resolve(`${packageName}/package.json`, { paths: searchPaths })));
   } catch {
     // Some packages intentionally hide package.json behind exports.
   }
 
   try {
-    candidates.push(path.dirname(require.resolve(packageName, { paths: [root] })));
+    candidates.push(path.dirname(require.resolve(packageName, { paths: searchPaths })));
   } catch {
     // Keep the final error focused on the package root lookup.
   }
@@ -291,8 +300,8 @@ function writeNodePackage() {
   );
 }
 
-function copyRuntimePackage(packageName) {
-  const packageRoot = findPackageRoot(packageName);
+function copyRuntimePackage(packageName, searchPaths) {
+  const packageRoot = findPackageRoot(packageName, searchPaths);
   const target = path.join(outputDir, "node_modules", ...packageName.split("/"));
 
   removeIfExists(target);
@@ -303,6 +312,12 @@ function copyRequiredRuntimePackages() {
   for (const packageName of requiredRuntimePackages) {
     copyRuntimePackage(packageName);
   }
+
+  // react-dom resolves scheduler from its own dependency tree. The standalone
+  // output does not always trace that package, but Next's error renderer loads
+  // react-dom/server.browser after an application route throws.
+  const reactDomRoot = findPackageRoot("react-dom");
+  copyRuntimePackage("scheduler", [reactDomRoot]);
 }
 
 function copyCapacitorNativeBridge() {
@@ -318,7 +333,7 @@ function copyCapacitorNativeBridge() {
   fs.copyFileSync(source, target);
 }
 
-function patchIncompatibleUnicodeRegex() {
+function patchZodUnicodeRegex() {
   // The embedded Node/V8 build used by capacitor-nodejs cannot parse regex
   // Unicode property escapes (\p{ID_Start}, \p{ID_Continue}, etc.) — it
   // throws "Invalid property name in character class" at parse time.
@@ -344,6 +359,66 @@ function patchIncompatibleUnicodeRegex() {
   }
 
   fs.writeFileSync(target, original.split(broken).join(fixed));
+}
+
+function findFilesWithExtension(dir, extension, result = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      findFilesWithExtension(entryPath, extension, result);
+    } else if (entry.isFile() && entry.name.endsWith(extension)) {
+      result.push(entryPath);
+    }
+  }
+  return result;
+}
+
+function patchUnicodePropertyEscapes(file) {
+  const original = fs.readFileSync(file, "utf8");
+  let patched = original;
+  const replacements = [
+    ["\\p{Extended_Pictographic}", "."],
+    ["\\p{Emoji_Component}", "."],
+    ["\\p{ID_Continue}", "A-Za-z0-9_$"],
+    ["\\p{ID_Start}", "A-Za-z_$"],
+    ["\\p{Alpha}", "A-Za-z"],
+    ["\\p{Lu}", "A-Z"],
+    ["\\p{Ll}", "a-z"],
+    ["\\p{L}", "A-Za-z"],
+    ["\\p{N}", "0-9"]
+  ];
+
+  for (const [unsupported, replacement] of replacements) {
+    patched = patched.split(unsupported).join(replacement);
+  }
+
+  if (patched.includes("\\p{")) {
+    throw new Error(
+      `Unsupported Unicode-property regex remains in ${path.relative(root, file)}. ` +
+        "Add an Android-safe equivalent in scripts/mobile-prepare.js before building an APK."
+    );
+  }
+
+  if (patched !== original) {
+    fs.writeFileSync(file, patched);
+  }
+}
+
+function patchIncompatibleUnicodeRegex() {
+  // capacitor-nodejs ships a Node/V8 build that cannot parse Unicode property
+  // escapes. Patch every compiled server chunk before it is placed in the APK.
+  const serverDir = path.join(outputDir, ".next", "server");
+  const zodFile = path.join(outputDir, "node_modules", "next", "dist", "compiled", "zod-validation-error", "index.js");
+  const files = findFilesWithExtension(serverDir, ".js");
+
+  if (!fs.existsSync(zodFile)) {
+    throw new Error(`Cannot patch Unicode-incompatible regex: missing ${path.relative(root, zodFile)}.`);
+  }
+
+  files.push(zodFile);
+  for (const file of files) {
+    patchUnicodePropertyEscapes(file);
+  }
 }
 
 function removePrismaNativeEngines() {
@@ -402,6 +477,10 @@ function assertPreparedServer() {
     path.join(outputDir, "node_modules", "@next", "env", "package.json"),
     path.join(outputDir, "node_modules", "caniuse-lite", "package.json"),
     path.join(outputDir, "node_modules", "v8-compile-cache", "package.json"),
+    path.join(outputDir, "node_modules", "react", "package.json"),
+    path.join(outputDir, "node_modules", "react-dom", "package.json"),
+    path.join(outputDir, "node_modules", "react-dom", "server.browser.js"),
+    path.join(outputDir, "node_modules", "scheduler", "package.json"),
     path.join(outputDir, "public", capacitorNativeBridgeFileName),
     path.join(outputDir, "data", "daily-health-template.db")
   ];
@@ -488,7 +567,6 @@ function main() {
   // Prisma engines are host-specific and cannot run inside the Node runtime
   // bundled with the APK, so keep them out of the packaged server entirely.
   removePrismaNativeEngines();
-  patchWebEntryPort();
   assertPreparedServer();
 
   const size = directorySize(outputDir);

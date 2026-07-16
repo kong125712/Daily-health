@@ -103,6 +103,15 @@ jobs:
       - name: Prepare embedded mobile server
         run: pnpm run mobile:prepare
 
+      - name: Verify embedded Node runtime
+        run: |
+          test -f mobile-web/nodejs/node_modules/react-dom/server.browser.js
+          test -f mobile-web/nodejs/node_modules/scheduler/package.json
+          if rg -F '\p{' mobile-web/nodejs/.next/server; then
+            echo "::error::The embedded server still contains an Android-incompatible Unicode-property regex."
+            exit 1
+          fi
+
       - name: Sync Capacitor Android project
         run: pnpm exec cap sync android
 
@@ -192,6 +201,9 @@ jobs:
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/next/package.json"
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/styled-jsx/package.json"
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/client-only/package.json"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/react-dom/server.browser.js"
+            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/scheduler/package.json"
+            unzip -p "$apk" assets/capacitor.config.json | grep -F '"url": "http://127.0.0.1:34189"'
             unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
             unzip -l "$apk" | grep -F "assets/public/nodejs/public/capacitor-native-bridge.js"
             unzip -p "$apk" assets/public/nodejs/public/capacitor-native-bridge.js | grep -F "nativePromise"

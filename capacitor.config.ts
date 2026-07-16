@@ -19,6 +19,10 @@ const config: CapacitorConfig = {
   appName: "Daily Health",
   webDir: "mobile-web",
   server: {
+    // The embedded Node server is the first real WebView origin on Android.
+    // MainActivity waits for its health check before reloading this URL, which
+    // preserves Capacitor's native plugin bridge for the page lifetime.
+    url: `http://127.0.0.1:${embeddedServerPort}`,
     allowNavigation: embeddedNavigationOrigins,
     cleartext: true
   },
@@ -36,8 +40,8 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
-    // This app only navigates to its loopback server. The legacy bridge keeps
-    // native plugins available on that HTTP origin after the boot redirect.
+    // This app loads only its loopback server as the first WebView origin.
+    // The legacy bridge is retained for capacitor-nodejs compatibility.
     useLegacyBridge: true
   }
 };

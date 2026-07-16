@@ -82,9 +82,11 @@ type StoredRecord<T> = {
 
 const databaseName = "daily_health";
 const sqliteMethodNames = ["createConnection", "open", "execute", "run", "query"];
+const sqliteOperationTimeoutMs = 15_000;
 let sqlite: SqlitePlugin | null = null;
 let readyPromise: Promise<void> | null = null;
 let nativeBridgePromise: Promise<void> | null = null;
+let sqliteOperationQueue: Promise<void> = Promise.resolve();
 
 export class MobileApiError extends Error {
   statusCode: number;
@@ -159,8 +161,7 @@ function ensureNativeSqlitePluginHeader() {
 
   const headers = capacitorGlobal.PluginHeaders ?? (capacitorGlobal.PluginHeaders = []);
   if (!headers.some((header) => header.name === "CapacitorSQLite")) {
-    // The boot page changes to the loopback server origin. Capacitor can retain
-    // androidBridge across that navigation while losing the generated headers.
+    // Keep the generated method table available for the native plugin proxy.
     headers.push({
       name: "CapacitorSQLite",
       methods: sqliteMethodNames.map((name) => ({ name, rtype: "promise" }))
@@ -286,19 +287,47 @@ function defaultProfile(profileId: string): UserProfileView {
 }
 
 async function execute(statements: string) {
-  const nativeSqlite = await getSqlite();
-  await nativeSqlite.execute({ database: databaseName, statements, transaction: true, readonly: false });
+  await queueSqliteOperation(async () => {
+    const nativeSqlite = await getSqlite();
+    await withSqliteTimeout(nativeSqlite.execute({ database: databaseName, statements, transaction: true, readonly: false }));
+  });
 }
 
 async function run(statement: string, values: unknown[] = []) {
-  const nativeSqlite = await getSqlite();
-  await nativeSqlite.run({ database: databaseName, statement, values, transaction: true, readonly: false });
+  await queueSqliteOperation(async () => {
+    const nativeSqlite = await getSqlite();
+    await withSqliteTimeout(nativeSqlite.run({ database: databaseName, statement, values, transaction: true, readonly: false }));
+  });
 }
 
 async function query(statement: string, values: unknown[] = []) {
-  const nativeSqlite = await getSqlite();
-  const result = await nativeSqlite.query({ database: databaseName, statement, values, readonly: false });
-  return result.values ?? [];
+  return queueSqliteOperation(async () => {
+    const nativeSqlite = await getSqlite();
+    const result = await withSqliteTimeout(nativeSqlite.query({ database: databaseName, statement, values, readonly: false }));
+    return result.values ?? [];
+  });
+}
+
+function queueSqliteOperation<T>(operation: () => Promise<T>) {
+  const queued = sqliteOperationQueue.then(operation, operation);
+  sqliteOperationQueue = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  return queued;
+}
+
+function withSqliteTimeout<T>(operation: Promise<T>) {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutResult = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error("The local device database did not respond. Please close and reopen Daily Health."));
+    }, sqliteOperationTimeoutMs);
+  });
+
+  return Promise.race([operation, timeoutResult]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
 }
 
 async function ensureDatabase() {
@@ -307,19 +336,19 @@ async function ensureDatabase() {
     readyPromise = (async () => {
       try {
         const nativeSqlite = await getSqlite();
-        await nativeSqlite.createConnection({
+        await withSqliteTimeout(nativeSqlite.createConnection({
           database: databaseName,
           version: 1,
           encrypted: false,
           mode: "no-encryption",
           readonly: false
-        });
+        }));
       } catch {
         // Opening an already-created connection is expected after a WebView resume.
       }
       try {
         const nativeSqlite = await getSqlite();
-        await nativeSqlite.open({ database: databaseName, readonly: false });
+        await withSqliteTimeout(nativeSqlite.open({ database: databaseName, readonly: false }));
       } catch {
         // The native plugin keeps an open connection for the WebView lifetime.
       }

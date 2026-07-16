@@ -113,38 +113,5 @@
       <div class="bar" aria-hidden="true"></div>
       <p id="error" class="error"></p>
     </main>
-    <script>
-      const localOrigin = "http://127.0.0.1:__DAILY_HEALTH_PORT__";
-      const statusEl = document.getElementById("status");
-      const errorEl = document.getElementById("error");
-      const pollIntervalMs = 250;
-      const startupTimeoutMs = 45000;
-      const startupStartedAt = Date.now();
-
-      async function waitForServer() {
-        const elapsedMs = Date.now() - startupStartedAt;
-        statusEl.textContent = elapsedMs < 2000 ? "Starting local health server..." : "Still preparing local data...";
-        try {
-          const response = await fetch(localOrigin + "/api/health", { cache: "no-store" });
-          if (response.ok) {
-            window.location.replace(localOrigin);
-            return;
-          }
-        } catch {
-          // The embedded server may still be starting.
-        }
-
-        if (elapsedMs >= startupTimeoutMs) {
-          errorEl.style.display = "block";
-          errorEl.textContent = "Local server did not start. Reopen the app or check the APK diagnostic logs.";
-          statusEl.textContent = "Unable to open Daily Health.";
-          return;
-        }
-
-        window.setTimeout(waitForServer, pollIntervalMs);
-      }
-
-      waitForServer();
-    </script>
   </body>
 </html>
