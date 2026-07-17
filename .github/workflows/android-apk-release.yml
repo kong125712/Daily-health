@@ -81,6 +81,9 @@ jobs:
         # unavailable; the generated APK still uses that pinned package version.
         run: pnpm install --no-frozen-lockfile
 
+      - name: Test mobile startup gateway
+        run: node scripts/mobile-runtime-bootstrap.test.cjs
+
       - name: Create CI environment files
         run: |
           cat > .env.local <<'EOF'
@@ -124,7 +127,7 @@ jobs:
 
           for attempt in $(seq 1 60); do
             health_response="$(curl --silent --show-error --fail --max-time 1 http://127.0.0.1:34189/api/health || true)"
-            if printf '%s' "$health_response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+            if printf '%s' "$health_response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf '%s' "$health_response" | grep -Eq '"phase"[[:space:]]*:[[:space:]]*"ready"'; then
               curl --silent --show-error --fail --max-time 3 http://127.0.0.1:34189/ | grep -Fq '<title>Daily Health</title>'
               exit 0
             fi

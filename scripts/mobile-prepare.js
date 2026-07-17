@@ -9,6 +9,7 @@ const nextStaticDir = path.join(root, ".next", "static");
 const publicDir = path.join(root, "public");
 const outputDir = path.join(root, "mobile-web", "nodejs");
 const epicureBridgeSource = path.join(root, "scripts", "mobile-epicure-bridge.js");
+const runtimeBootstrapSource = path.join(root, "scripts", "mobile-runtime-bootstrap.js");
 const schemaDir = path.join(root, "database");
 const schemaPath = path.join(schemaDir, "schema.prisma");
 const sizeLimitBytes = 200 * 1024 * 1024;
@@ -232,50 +233,17 @@ function createDatabaseTemplate() {
 }
 
 function writeBootstrap() {
-  const bootstrap = `const Module = require("module");
-const originalResolveFilename = Module._resolveFilename;
-
-Module._resolveFilename = function resolveNodeProtocol(request, parent, isMain, options) {
-  if (typeof request === "string" && request.startsWith("node:")) {
-    request = request.slice(5);
+  if (!fs.existsSync(runtimeBootstrapSource)) {
+    throw new Error(`Missing ${path.relative(root, runtimeBootstrapSource)}.`);
   }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
 
-const fs = require("fs");
-const path = require("path");
-
-const port = process.env.PORT || "${mobileServerPort}";
-const host = "127.0.0.1";
-const epicureBridgePort = Number(process.env.DAILY_HEALTH_EPICURE_PORT || Number(port) + 1);
-const dataDir = process.env.DAILY_HEALTH_DATA_DIR || path.resolve(__dirname, "..", "daily-health-data");
-const templateDb = path.join(__dirname, "data", "daily-health-template.db");
-const databasePath = path.join(dataDir, "daily-health.db");
-
-fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(databasePath) || fs.statSync(databasePath).size === 0) {
-  if (!fs.existsSync(templateDb)) {
-    throw new Error("Missing bundled SQLite template database.");
+  const source = fs.readFileSync(runtimeBootstrapSource, "utf8");
+  const placeholder = "__DAILY_HEALTH_PORT__";
+  if (!source.includes(placeholder)) {
+    throw new Error(`Missing ${placeholder} in ${path.relative(root, runtimeBootstrapSource)}.`);
   }
-  fs.copyFileSync(templateDb, databasePath);
-}
 
-// Speeds up cold starts: caches V8's compiled bytecode for the (large) Next.js
-// server bundle across app launches instead of re-parsing it from scratch every
-// time. Must be required before the heavy requires below to take effect on them.
-process.env.V8_COMPILE_CACHE_CACHE_DIR = path.join(dataDir, ".v8-compile-cache");
-require("v8-compile-cache");
-
-process.env.NODE_ENV = "production";
-process.env.PORT = port;
-process.env.HOSTNAME = host;
-process.env.DATABASE_URL = process.env.DATABASE_URL || "file:" + databasePath;
-process.env.NEXT_TELEMETRY_DISABLED = "1";
-
-require("./epicure-bridge.js").startEpicureBridge({ host, port: epicureBridgePort });
-require("./server.js");
-`;
-  fs.writeFileSync(path.join(outputDir, "index.js"), bootstrap);
+  fs.writeFileSync(path.join(outputDir, "index.js"), source.split(placeholder).join(mobileServerPort));
 }
 
 function writeNodePackage() {
@@ -538,6 +506,9 @@ function main() {
   assertDirectory(nextStaticDir, "Missing .next/static. Run `pnpm run build` first.");
   if (!fs.existsSync(epicureBridgeSource)) {
     throw new Error("Missing scripts/mobile-epicure-bridge.js.");
+  }
+  if (!fs.existsSync(runtimeBootstrapSource)) {
+    throw new Error("Missing scripts/mobile-runtime-bootstrap.js.");
   }
 
   const serverFiles = findFiles(standaloneRoot, "server.js");
