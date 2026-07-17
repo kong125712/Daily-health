@@ -112,6 +112,35 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke-test embedded mobile server
+        env:
+          DAILY_HEALTH_DATA_DIR: ${{ runner.temp }}/daily-health-mobile-data
+        run: |
+          set -euo pipefail
+          log_file="$RUNNER_TEMP/daily-health-embedded-server.log"
+          PORT=34189 node mobile-web/nodejs/index.js >"$log_file" 2>&1 &
+          node_pid=$!
+          trap 'kill "$node_pid" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 60); do
+            health_response="$(curl --silent --show-error --fail --max-time 1 http://127.0.0.1:34189/api/health || true)"
+            if printf '%s' "$health_response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+              curl --silent --show-error --fail --max-time 3 http://127.0.0.1:34189/ | grep -Fq '<title>Daily Health</title>'
+              exit 0
+            fi
+
+            if ! kill -0 "$node_pid" 2>/dev/null; then
+              echo "::error::The embedded mobile Node server exited before /api/health became ready."
+              cat "$log_file"
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          echo "::error::The embedded mobile Node server did not return JSON from /api/health."
+          cat "$log_file"
+          exit 1
+
       - name: Sync Capacitor Android project
         run: pnpm exec cap sync android
 
