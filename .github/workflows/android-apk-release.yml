@@ -203,7 +203,10 @@ jobs:
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/client-only/package.json"
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/react-dom/server.browser.js"
             unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/scheduler/package.json"
-            unzip -p "$apk" assets/capacitor.config.json | grep -F '"url": "http://127.0.0.1:34189"'
+            if unzip -p "$apk" assets/capacitor.config.json | grep -q '"url"'; then
+              echo "::error::$apk must keep the Capacitor WebView on its bundled localhost origin."
+              exit 1
+            fi
             unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
             unzip -l "$apk" | grep -F "assets/public/nodejs/public/capacitor-native-bridge.js"
             unzip -p "$apk" assets/public/nodejs/public/capacitor-native-bridge.js | grep -F "nativePromise"

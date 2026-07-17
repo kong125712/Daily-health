@@ -113,5 +113,13 @@
       <div class="bar" aria-hidden="true"></div>
       <p id="error" class="error"></p>
     </main>
+    <script>
+      window.dailyHealthStartupFailed = function dailyHealthStartupFailed(message) {
+        document.getElementById("status").textContent = "Local service could not start.";
+        const error = document.getElementById("error");
+        error.textContent = message;
+        error.style.display = "block";
+      };
+    </script>
   </body>
 </html>
