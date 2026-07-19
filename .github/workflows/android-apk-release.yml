@@ -42,6 +42,8 @@ jobs:
       - uses: android-actions/setup-android@v4
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+      - name: Check Expo dependency compatibility
+        run: pnpm --filter @daily-health/mobile exec expo install --check
       - name: Inject tag version
         run: |
           node --input-type=module <<'NODE'
