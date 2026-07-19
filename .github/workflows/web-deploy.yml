@@ -30,12 +30,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "22.13.0"
       - uses: pnpm/action-setup@v6
         with:
           version: "11.7.0"
       - uses: actions/configure-pages@v5
-      - run: pnpm install --frozen-lockfile
+        with:
+          enablement: true
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @daily-health/mobile exec expo install --check
       - run: pnpm --filter @daily-health/mobile typecheck
       - run: pnpm --filter @daily-health/mobile export:web
       - uses: actions/upload-pages-artifact@v4
