@@ -1,0 +1,15 @@
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import type { DailyHistoryView } from "../../src/domain";
+import { useApp } from "../../src/state/AppProvider";
+import { colors, shared } from "../../src/ui/styles";
+import { isoToday, recentIsoDates } from "../../src/utils/date";
+
+export default function HistoryScreen() {
+  const { adapter, locale, t } = useApp();
+  const [date, setDate] = useState(isoToday()); const [history, setHistory] = useState<DailyHistoryView | null>(null); const [recent, setRecent] = useState<DailyHistoryView[]>([]); const [message, setMessage] = useState<string | null>(null);
+  const load = useCallback(async () => { try { const [current, days] = await Promise.all([adapter.getHistory(date), Promise.all(recentIsoDates(7).map((item) => adapter.getHistory(item)))]); setHistory(current); setRecent(days); } catch (error) { setMessage(error instanceof Error ? error.message : t("common.error")); } }, [adapter, date, t]);
+  useEffect(() => { void load(); }, [load]);
+  return <SafeAreaView style={shared.page} edges={["left", "right"]}><ScrollView contentContainerStyle={shared.content}><View style={shared.header}><Text style={shared.title}>{t("history.title")}</Text><Text style={shared.subtitle}>{t("dashboard.subtitle")}</Text></View>{message ? <Text style={shared.error}>{message}</Text> : null}<View style={shared.panel}><Text style={shared.label}>{t("common.date")}</Text><TextInput value={date} onChangeText={setDate} style={shared.input} placeholder="YYYY-MM-DD" /></View>{!history ? <ActivityIndicator color={colors.leaf} /> : <><View style={shared.panel}><Text style={shared.sectionTitle}>{history.date}</Text><Text style={shared.helper}>{t("food.dailyTotal")}: {history.dailyCalories} kcal</Text><Text style={shared.helper}>{t("water.total")}: {history.water.totalMl} / {history.water.targetMl} ml</Text><Text style={shared.helper}>{t("exercise.totalMinutes")}: {history.exerciseMinutes}</Text><Text style={shared.helper}>{t("dashboard.sleepLatest")}: {history.sleep ? `${history.sleep.hours} h · ${history.sleep.quality}` : t("common.empty")}</Text><Text style={shared.helper}>{t("dashboard.weightLatest")}: {history.weight ? `${history.weight.weightKg} kg` : t("common.empty")}</Text></View><View style={shared.panel}><Text style={shared.sectionTitle}>{t("dashboard.weeklySummary")}</Text>{recent.map((item) => <View key={item.date} style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, gap: 2 }}><Text style={{ color: colors.text, fontWeight: "700" }}>{item.date}</Text><Text style={shared.helper}>{item.dailyCalories} kcal · {item.water.totalMl} ml · {item.exerciseMinutes} min</Text><Text style={shared.helper}>{locale === "zh-CN" ? `扫描 ${item.scans.length} · 菜谱 ${item.recipes.length}` : `${item.scans.length} scans · ${item.recipes.length} recipes`}</Text></View>)}</View></>}</ScrollView></SafeAreaView>;
+}

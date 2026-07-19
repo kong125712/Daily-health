@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Daily Health</string>
-    <string name="title_activity_main">Daily Health</string>
-    <string name="package_name">com.dailyhealth.mobile</string>
-    <string name="custom_url_scheme">com.dailyhealth.mobile</string>
-</resources>
