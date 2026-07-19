@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "22.13.0"
 
       - uses: pnpm/action-setup@v6
         with:
@@ -44,7 +44,7 @@ jobs:
       - uses: android-actions/setup-android@v4
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Type-check and bundle web/native JavaScript
         run: |
