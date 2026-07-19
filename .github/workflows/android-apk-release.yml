@@ -72,13 +72,13 @@ jobs:
           expected_code="$GITHUB_RUN_NUMBER"
           for apk in apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk apps/mobile/android/app/build/outputs/apk/release/app-release.apk; do
             test -f "$apk"
-            if unzip -l "$apk" | rg -i 'capacitor|nodejs|libnode\.so|query_engine|prisma'; then
+            if unzip -l "$apk" | grep -E -i 'capacitor|nodejs|libnode\.so|query_engine|prisma'; then
               echo "::error::$apk contains a removed embedded-server artifact."
               exit 1
             fi
             badging="$($AAPT dump badging "$apk")"
-            echo "$badging" | rg -F "versionName='$expected_name'"
-            echo "$badging" | rg -F "versionCode='$expected_code'"
+            echo "$badging" | grep -F "versionName='$expected_name'"
+            echo "$badging" | grep -F "versionCode='$expected_code'"
           done
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
