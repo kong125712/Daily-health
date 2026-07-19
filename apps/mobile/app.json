@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Daily Health",
+    "slug": "daily-health",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "scheme": "dailyhealth",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Daily Health uses a meal photo to identify ingredients.",
+          "cameraPermission": "Daily Health uses the camera to identify ingredients."
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.dailyhealth.mobile",
+      "versionCode": 2000000,
+      "adaptiveIcon": {
+        "backgroundColor": "#F4FBF6"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

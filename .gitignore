@@ -1,25 +1,19 @@
 node_modules
 .pnpm-store/
-.next
-out
+.expo/
+apps/mobile/android/
+apps/mobile/ios/
 dist
 *.log
-mobile-web/nodejs/
-mobile-web/daily-health-data/
 
 .env
 .env.*
 !.env.example
-database/.env
-database/*.db
-database/*.db-journal
-database/*.db-wal
-database/*.db-shm
-
-android/.gradle
-android/build
-android/app/build
-android/local.properties
+server/.env
+server/*.db
+server/*.db-journal
+server/*.db-wal
+server/*.db-shm
 
 .agents/
 .codex/

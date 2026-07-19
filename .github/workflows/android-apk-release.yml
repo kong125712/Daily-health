@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag to create, for example v1.0.1"
+        description: Release tag, for example v2.0.1
         required: true
         type: string
       release_name:
-        description: "Optional release title. Defaults to the tag."
+        description: Optional release title
         required: false
         type: string
       prerelease:
-        description: "Mark this GitHub Release as a pre-release"
+        description: Mark the GitHub Release as a pre-release
         required: true
         default: false
         type: boolean
@@ -21,273 +21,71 @@ permissions:
   contents: write
 
 jobs:
-  owner-check:
-    name: Owner-only guard
-    runs-on: ubuntu-latest
-    steps:
-      - name: Allow only repository owner
-        if: ${{ github.actor != github.repository_owner }}
-        run: |
-          echo "::error::Only the repository owner can manually trigger APK releases."
-          exit 1
-      - name: Owner confirmed
-        run: echo "Release triggered by repository owner ${{ github.actor }}."
-
-  build-and-release:
-    name: Build APKs and publish Release
-    needs: owner-check
+  release:
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     env:
-      NEXT_TELEMETRY_DISABLED: "1"
-      DATABASE_URL: "file:./daily-health.db"
       RELEASE_TAG: ${{ inputs.tag_name }}
       RELEASE_NAME: ${{ inputs.release_name != '' && inputs.release_name || inputs.tag_name }}
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+          node-version: "24"
+      - uses: pnpm/action-setup@v6
         with:
           version: "11.7.0"
-
-      - name: Configure pnpm cache
-        uses: actions/setup-node@v6
+      - uses: actions/setup-java@v5
         with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "21"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
-
+      - uses: android-actions/setup-android@v4
       - name: Install dependencies
-        # The native SQLite plugin is pinned in package.json. Allow pnpm to
-        # refresh the lock on the isolated CI runner while local npm access is
-        # unavailable; the generated APK still uses that pinned package version.
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Test mobile startup gateway
-        run: node scripts/mobile-runtime-bootstrap.test.cjs
-
-      - name: Create CI environment files
+        run: pnpm install --frozen-lockfile
+      - name: Inject tag version
         run: |
-          cat > .env.local <<'EOF'
-          DATABASE_URL="file:./daily-health.db"
-          AI_PROVIDER=
-          OPENAI_API_KEY=
-          GEMINI_API_KEY=
-          EPICURE_MCP_URL=
-          EOF
-          cat > database/.env <<'EOF'
-          DATABASE_URL="file:./daily-health.db"
-          EOF
-
-      - name: Lint
-        run: pnpm exec eslint . --ext .ts,.tsx --max-warnings=0
-
-      - name: Build web app
-        run: pnpm run build
-
-      - name: Prepare embedded mobile server
-        run: pnpm run mobile:prepare
-
-      - name: Verify embedded Node runtime
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          const tag = process.env.RELEASE_TAG ?? "";
+          const version = tag.replace(/^v/, "");
+          if (!version) throw new Error("Release tag must contain a version.");
+          const path = "apps/mobile/app.json";
+          const app = JSON.parse(await readFile(path, "utf8"));
+          app.expo.version = version;
+          app.expo.android.versionCode = Number(process.env.GITHUB_RUN_NUMBER);
+          await writeFile(path, `${JSON.stringify(app, null, 2)}\n`);
+          NODE
+      - name: Type-check and export JavaScript bundles
         run: |
-          test -f mobile-web/nodejs/node_modules/react-dom/server.browser.js
-          test -f mobile-web/nodejs/node_modules/scheduler/package.json
-          if rg -F '\p{' mobile-web/nodejs/.next/server; then
-            echo "::error::The embedded server still contains an Android-incompatible Unicode-property regex."
-            exit 1
-          fi
-
-      - name: Smoke-test embedded mobile server
-        env:
-          DAILY_HEALTH_DATA_DIR: ${{ runner.temp }}/daily-health-mobile-data
+          pnpm --filter @daily-health/mobile typecheck
+          pnpm --filter @daily-health/mobile export:web
+          pnpm --filter @daily-health/mobile exec expo export --platform android
+      - name: Prebuild and assemble APKs
         run: |
-          set -euo pipefail
-          log_file="$RUNNER_TEMP/daily-health-embedded-server.log"
-          PORT=34189 node mobile-web/nodejs/index.js >"$log_file" 2>&1 &
-          node_pid=$!
-          trap 'kill "$node_pid" 2>/dev/null || true' EXIT
-
-          for attempt in $(seq 1 60); do
-            health_response="$(curl --silent --show-error --fail --max-time 1 http://127.0.0.1:34189/api/health || true)"
-            if printf '%s' "$health_response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf '%s' "$health_response" | grep -Eq '"phase"[[:space:]]*:[[:space:]]*"ready"'; then
-              curl --silent --show-error --fail --max-time 3 http://127.0.0.1:34189/ | grep -Fq '<title>Daily Health</title>'
-              exit 0
-            fi
-
-            if ! kill -0 "$node_pid" 2>/dev/null; then
-              echo "::error::The embedded mobile Node server exited before /api/health became ready."
-              cat "$log_file"
-              exit 1
-            fi
-            sleep 0.5
-          done
-
-          echo "::error::The embedded mobile Node server did not return JSON from /api/health."
-          cat "$log_file"
-          exit 1
-
-      - name: Sync Capacitor Android project
-        run: pnpm exec cap sync android
-
-      - name: Verify native SQLite plugin
-        run: |
-          grep -F "capacitor-community-sqlite" android/capacitor.settings.gradle
-          grep -F "CapacitorSQLitePlugin" android/app/src/main/assets/capacitor.plugins.json
-
-      - name: Prepare release signing
-        env:
-          ANDROID_KEYSTORE_BASE64_SECRET: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD_SECRET: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS_SECRET: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD_SECRET: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/android-signing"
-
-          if [[ -n "$ANDROID_KEYSTORE_BASE64_SECRET" || -n "$ANDROID_KEYSTORE_PASSWORD_SECRET" || -n "$ANDROID_KEY_ALIAS_SECRET" || -n "$ANDROID_KEY_PASSWORD_SECRET" ]]; then
-            if [[ -z "$ANDROID_KEYSTORE_BASE64_SECRET" || -z "$ANDROID_KEYSTORE_PASSWORD_SECRET" || -z "$ANDROID_KEY_ALIAS_SECRET" ]]; then
-              echo "::error::Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS together. ANDROID_KEY_PASSWORD is optional."
-              exit 1
-            fi
-
-            echo "$ANDROID_KEYSTORE_BASE64_SECRET" | base64 --decode > "$RUNNER_TEMP/android-signing/release.keystore"
-            {
-              echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/android-signing/release.keystore"
-              echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD_SECRET"
-              echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS_SECRET"
-              echo "ANDROID_KEY_PASSWORD=${ANDROID_KEY_PASSWORD_SECRET:-$ANDROID_KEYSTORE_PASSWORD_SECRET}"
-              echo "ANDROID_SIGNING_MODE=secret-keystore"
-            } >> "$GITHUB_ENV"
-          else
-            keytool -genkeypair \
-              -v \
-              -keystore "$RUNNER_TEMP/android-signing/release.keystore" \
-              -storepass "dailyhealth-ci-release" \
-              -keypass "dailyhealth-ci-release" \
-              -alias "dailyhealth-ci" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Daily Health CI, OU=CI, O=Daily Health, L=CI, S=CI, C=US"
-
-            {
-              echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/android-signing/release.keystore"
-              echo "ANDROID_KEYSTORE_PASSWORD=dailyhealth-ci-release"
-              echo "ANDROID_KEY_ALIAS=dailyhealth-ci"
-              echo "ANDROID_KEY_PASSWORD=dailyhealth-ci-release"
-              echo "ANDROID_SIGNING_MODE=temporary-ci-keystore"
-            } >> "$GITHUB_ENV"
-          fi
-
-      - name: Resolve app version
-        run: |
-          VERSION_NAME="${RELEASE_TAG#v}"
-          if [[ -z "$VERSION_NAME" ]]; then
-            echo "::error::tag_name resolved to an empty version name."
-            exit 1
-          fi
-          {
-            echo "DAILY_HEALTH_VERSION_NAME=$VERSION_NAME"
-            echo "DAILY_HEALTH_VERSION_CODE=${{ github.run_number }}"
-          } >> "$GITHUB_ENV"
-
-      - name: Build debug and release APKs
-        run: |
-          chmod +x android/gradlew
-          ./android/gradlew -p android \
-            -PdailyHealthVersionName="$DAILY_HEALTH_VERSION_NAME" \
-            -PdailyHealthVersionCode="$DAILY_HEALTH_VERSION_CODE" \
-            assembleDebug assembleRelease
-
-      - name: Verify embedded APK contents
+          pnpm --filter @daily-health/mobile prebuild:android
+          cd apps/mobile/android
+          ./gradlew assembleDebug assembleRelease
+      - name: Verify Android artifacts
         run: |
           AAPT="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name aapt | sort -V | tail -n1)"
-          for apk in android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/release/app-release.apk; do
-            echo "Checking $apk"
-            ls -lh "$apk"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/BUILD_ID"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/page.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/recipes/page.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/recipes.html"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/health/route.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/runtime-status/route.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/profile/route.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/.next/server/app/api/ai-settings/route.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/next/package.json"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/styled-jsx/package.json"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/client-only/package.json"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/react-dom/server.browser.js"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/node_modules/scheduler/package.json"
-            if unzip -p "$apk" assets/capacitor.config.json | grep -q '"url"'; then
-              echo "::error::$apk must keep the Capacitor WebView on its bundled localhost origin."
+          expected_name="${RELEASE_TAG#v}"
+          expected_code="$GITHUB_RUN_NUMBER"
+          for apk in apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk apps/mobile/android/app/build/outputs/apk/release/app-release.apk; do
+            test -f "$apk"
+            if unzip -l "$apk" | rg -i 'capacitor|nodejs|libnode\.so|query_engine|prisma'; then
+              echo "::error::$apk contains a removed embedded-server artifact."
               exit 1
             fi
-            unzip -l "$apk" | grep -F "assets/public/nodejs/data/daily-health-template.db"
-            unzip -l "$apk" | grep -F "assets/public/nodejs/public/capacitor-native-bridge.js"
-            unzip -p "$apk" assets/public/nodejs/public/capacitor-native-bridge.js | grep -F "nativePromise"
-            unzip -p "$apk" assets/capacitor.plugins.json | grep -F "CapacitorSQLitePlugin"
-            unzip -l "$apk" | grep -F "lib/arm64-v8a/libnode.so"
-            unzip -l "$apk" | grep -F "lib/arm64-v8a/libnative-lib.so"
-            if unzip -l "$apk" | grep -E "query_engine.*\.(node|so|dylib)"; then
-              echo "::error::$apk still contains a host Prisma query engine."
-              exit 1
-            fi
-
-            BADGING="$("$AAPT" dump badging "$apk")"
-            echo "$BADGING" | grep "versionName='$DAILY_HEALTH_VERSION_NAME'" || {
-              echo "::error::$apk was not built with versionName=$DAILY_HEALTH_VERSION_NAME. Got: $(echo "$BADGING" | grep -o "versionName='[^']*'")"
-              exit 1
-            }
-            echo "$BADGING" | grep "versionCode='$DAILY_HEALTH_VERSION_CODE'" || {
-              echo "::error::$apk was not built with versionCode=$DAILY_HEALTH_VERSION_CODE. Got: $(echo "$BADGING" | grep -o "versionCode='[^']*'")"
-              exit 1
-            }
+            badging="$($AAPT dump badging "$apk")"
+            echo "$badging" | rg -F "versionName='$expected_name'"
+            echo "$badging" | rg -F "versionCode='$expected_code'"
           done
-
-      - name: Prepare release artifacts
-        run: |
-          mkdir -p release-artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk "release-artifacts/DailyHealth-debug-${RELEASE_TAG}.apk"
-          cp android/app/build/outputs/apk/release/app-release.apk "release-artifacts/DailyHealth-release-${RELEASE_TAG}.apk"
-
-          if [[ "$ANDROID_SIGNING_MODE" == "temporary-ci-keystore" ]]; then
-            cat > release-artifacts/SIGNING-NOTE.txt <<'EOF'
-          The release APK was signed with a temporary CI-generated keystore because no Android signing secrets were configured.
-          It is installable, but future release APKs signed with a different key may not upgrade this build in place.
-
-          For stable production signing, add these repository secrets:
-          - ANDROID_KEYSTORE_BASE64
-          - ANDROID_KEYSTORE_PASSWORD
-          - ANDROID_KEY_ALIAS
-          - ANDROID_KEY_PASSWORD optional, defaults to ANDROID_KEYSTORE_PASSWORD
-          EOF
-          fi
-
-          (cd release-artifacts && sha256sum * > SHA256SUMS.txt)
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ inputs.tag_name }}
           name: ${{ env.RELEASE_NAME }}
-          target_commitish: ${{ github.sha }}
           prerelease: ${{ inputs.prerelease }}
-          generate_release_notes: true
-          files: release-artifacts/*
+          files: |
+            apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
