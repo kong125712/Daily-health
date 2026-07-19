@@ -46,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Check Expo dependency compatibility
+        run: pnpm --filter @daily-health/mobile exec expo install --check
+
       - name: Type-check and bundle web/native JavaScript
         run: |
           pnpm --filter @daily-health/mobile typecheck
