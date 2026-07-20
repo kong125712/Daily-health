@@ -6,6 +6,7 @@ import { localStatus, type CachedAuthStatus } from "../auth/status";
 import { revalidateCloudSession } from "../auth/cloud";
 import { readCachedAuthStatus, writeCachedAuthStatus } from "../auth/statusStore";
 import { resolveAdapter } from "../data/resolveAdapter";
+import { LocalAdapter } from "../data/LocalAdapter";
 import type { DataAdapter } from "../data/DataAdapter";
 
 type AppContextValue = {
@@ -25,9 +26,30 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+type AdapterSelection = { adapter: DataAdapter; status: CachedAuthStatus };
+
+function createLocalSelection(status: CachedAuthStatus): AdapterSelection {
+  return { adapter: new LocalAdapter(status.profileId), status };
+}
+
+function resolveAdapterSafely(status: CachedAuthStatus): AdapterSelection {
+  try {
+    return resolveAdapter(status);
+  } catch (error) {
+    console.warn("Daily Health could not initialize the selected data adapter; using local mode instead.", error);
+    return createLocalSelection({
+      ...status,
+      subscribed: false,
+      localMirror: false,
+      testMode: true,
+      accessToken: null
+    });
+  }
+}
+
 export function AppProvider({ children }: PropsWithChildren) {
-  // Start with a safe local adapter while native secure storage is read.
-  const [selection, setSelection] = useState(() => resolveAdapter(localStatus()));
+  // The first render must not invoke a platform bridge or a Metro re-export.
+  const [selection, setSelection] = useState<AdapterSelection>(() => createLocalSelection(localStatus()));
   const [locale, setLocaleState] = useState<AppLocale>("en");
   const [theme, setThemeState] = useState<ThemeMode>("light");
   const [defaultWaterTargetMl, setDefaultWaterTargetMl] = useState(2000);
@@ -37,14 +59,16 @@ export function AppProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (authReady) return;
     let active = true;
-    void readCachedAuthStatus(selection.status)
-      .then((status) => {
-        if (active) setSelection(resolveAdapter(status));
-      })
-      .catch(() => undefined)
-      .finally(() => {
+    void (async () => {
+      try {
+        const status = await readCachedAuthStatus(selection.status);
+        if (active) setSelection(resolveAdapterSafely(status));
+      } catch (error) {
+        console.warn("Daily Health could not restore the previous sign-in state; continuing locally.", error);
+      } finally {
         if (active) setAuthReady(true);
-      });
+      }
+    })();
     return () => { active = false; };
   }, [authReady, selection.status]);
 
@@ -68,24 +92,40 @@ export function AppProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!authReady) return;
     let active = true;
-    void revalidateCloudSession(selection.status).then(async (next) => {
-      if (!active || !next) return;
-      if (JSON.stringify(next) === JSON.stringify(selection.status)) return;
-      await writeCachedAuthStatus(next);
-      if (active) setSelection(resolveAdapter(next));
-    });
+    void (async () => {
+      try {
+        const next = await revalidateCloudSession(selection.status);
+        if (!active || !next || JSON.stringify(next) === JSON.stringify(selection.status)) return;
+        try {
+          await writeCachedAuthStatus(next);
+        } catch (error) {
+          console.warn("Daily Health could not persist the refreshed sign-in state.", error);
+        }
+        if (active) setSelection(resolveAdapterSafely(next));
+      } catch (error) {
+        console.warn("Daily Health could not refresh the cloud session.", error);
+      }
+    })();
     return () => { active = false; };
   }, [authReady, selection.status]);
 
   const activateLocalMode = useCallback(async () => {
     const next = { ...selection.status, subscribed: false, localMirror: false, testMode: true, accessToken: null } satisfies CachedAuthStatus;
-    if (Platform.OS !== "web") await writeCachedAuthStatus(next);
-    setSelection(resolveAdapter(next));
+    try {
+      if (Platform.OS !== "web") await writeCachedAuthStatus(next);
+    } catch (error) {
+      console.warn("Daily Health could not persist local mode.", error);
+    }
+    setSelection(createLocalSelection(next));
   }, [selection.status]);
 
   const activateCloudSession = useCallback(async (status: CachedAuthStatus) => {
-    await writeCachedAuthStatus(status);
-    setSelection(resolveAdapter(status));
+    try {
+      await writeCachedAuthStatus(status);
+    } catch (error) {
+      console.warn("Daily Health could not persist the cloud sign-in state.", error);
+    }
+    setSelection(resolveAdapterSafely(status));
   }, []);
 
   const setLocale = useCallback(async (nextLocale: AppLocale) => {
