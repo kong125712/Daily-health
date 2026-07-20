@@ -44,6 +44,21 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Check Expo dependency compatibility
         run: pnpm --filter @daily-health/mobile exec expo install --check
+      - name: Assert safe mobile startup source
+        run: |
+          if grep -R -nE 'SecureStore\.getItem\(' apps/mobile; then
+            echo "::error::Mobile startup must not use the unavailable synchronous SecureStore API."
+            exit 1
+          fi
+          if grep -nE 'globalThis\.crypto|randomUUID' apps/mobile/src/auth/status.ts apps/mobile/src/data/LocalAdapter.ts; then
+            echo "::error::Mobile IDs must not depend on a platform crypto polyfill."
+            exit 1
+          fi
+          grep -F 'createLocalSelection(localStatus())' apps/mobile/src/state/AppProvider.tsx
+          if grep -F 'useState(() => resolveAdapter' apps/mobile/src/state/AppProvider.tsx; then
+            echo "::error::AppProvider must not initialize a platform adapter during its first render."
+            exit 1
+          fi
       - name: Inject tag version
         run: |
           node --input-type=module <<'NODE'

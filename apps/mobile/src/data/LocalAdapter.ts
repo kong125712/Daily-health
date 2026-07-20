@@ -35,15 +35,15 @@ type LocalSettings = Settings & { aiProvider: AiProvider };
 
 const databaseName = "daily-health.db";
 const keyName = (provider: AiProvider, profileId: string) => `daily-health.ai.${provider}.${profileId}`;
+let localIdSequence = 0;
 
 function now() {
   return new Date().toISOString();
 }
 
 function newId(prefix: string) {
-  const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === "function") return `${prefix}_${cryptoApi.randomUUID()}`;
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  localIdSequence = (localIdSequence + 1) % 1_000_000;
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}_${localIdSequence.toString(36)}`;
 }
 
 function parseRecord<T>(row: { record_id: string; data_json: string; created_at: string; updated_at: string } | null): StoredRecord<T> | null {
