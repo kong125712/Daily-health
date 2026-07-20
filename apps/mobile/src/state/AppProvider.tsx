@@ -47,9 +47,15 @@ function resolveAdapterSafely(status: CachedAuthStatus): AdapterSelection {
   }
 }
 
+function createInitialSelection(): AdapterSelection {
+  // The hosted website is cloud-only. Android keeps its offline SQLite path.
+  if (Platform.OS === "web") return resolveAdapterSafely(localStatus("web-remote"));
+  return createLocalSelection(localStatus());
+}
+
 export function AppProvider({ children }: PropsWithChildren) {
   // The first render must not invoke a platform bridge or a Metro re-export.
-  const [selection, setSelection] = useState<AdapterSelection>(() => createLocalSelection(localStatus()));
+  const [selection, setSelection] = useState<AdapterSelection>(createInitialSelection);
   const [locale, setLocaleState] = useState<AppLocale>("en");
   const [theme, setThemeState] = useState<ThemeMode>("light");
   const [defaultWaterTargetMl, setDefaultWaterTargetMl] = useState(2000);
