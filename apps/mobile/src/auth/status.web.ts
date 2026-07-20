@@ -13,9 +13,9 @@ function parse(value: string | null): CachedAuthStatus | null {
 
 // Web is cloud-only. Browser storage persists an authenticated cloud session,
 // never health records or a local-mode database.
-export function readCachedAuthStatus(): CachedAuthStatus {
-  if (typeof localStorage === "undefined") return { ...localStatus("web-remote"), subscribed: false, testMode: false };
-  return parse(localStorage.getItem(cacheKey)) ?? { ...localStatus("web-remote"), subscribed: false, testMode: false };
+export async function readCachedAuthStatus(fallback = { ...localStatus("web-remote"), subscribed: false, testMode: false }): Promise<CachedAuthStatus> {
+  if (typeof localStorage === "undefined") return fallback;
+  return parse(localStorage.getItem(cacheKey)) ?? fallback;
 }
 
 export async function writeCachedAuthStatus(status: CachedAuthStatus) {

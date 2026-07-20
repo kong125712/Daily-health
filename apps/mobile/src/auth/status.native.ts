@@ -21,9 +21,12 @@ function parse(value: string | null): CachedAuthStatus | null {
   }
 }
 
-/** Small, non-biometric synchronous read so adapter selection never waits on a network request. */
-export function readCachedAuthStatus(): CachedAuthStatus {
-  return parse(SecureStore.getItem(cacheKey)) ?? localStatus();
+export async function readCachedAuthStatus(fallback = localStatus()): Promise<CachedAuthStatus> {
+  try {
+    return parse(await SecureStore.getItemAsync(cacheKey)) ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function writeCachedAuthStatus(status: CachedAuthStatus) {

@@ -1,10 +1,9 @@
-import { readCachedAuthStatus } from "../auth/status.web";
+import type { CachedAuthStatus } from "../auth/status";
 import { cloudApiBaseUrl } from "../auth/cloud";
 import { RemoteAdapter } from "./RemoteAdapter";
 import type { DataAdapter } from "./DataAdapter";
 
-export function resolveAdapter(): { adapter: DataAdapter; status: ReturnType<typeof readCachedAuthStatus> } {
-  const status = readCachedAuthStatus();
+export function resolveAdapter(status: CachedAuthStatus): { adapter: DataAdapter; status: CachedAuthStatus } {
   return {
     adapter: new RemoteAdapter({
       baseUrl: cloudApiBaseUrl(),
