@@ -2,9 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Platform } from "react-native";
 import { dictionaries, normalizeLocale, type TranslationKey } from "../../../../lib/i18n/translations";
 import type { AppLocale, ThemeMode } from "../domain";
-import type { CachedAuthStatus } from "../auth/status";
+import { localStatus, type CachedAuthStatus } from "../auth/status";
 import { revalidateCloudSession } from "../auth/cloud";
-import { writeCachedAuthStatus } from "../auth/statusStore";
+import { readCachedAuthStatus, writeCachedAuthStatus } from "../auth/statusStore";
 import { resolveAdapter } from "../data/resolveAdapter";
 import type { DataAdapter } from "../data/DataAdapter";
 
@@ -15,6 +15,7 @@ type AppContextValue = {
   theme: ThemeMode;
   defaultWaterTargetMl: number;
   initialized: boolean;
+  authReady: boolean;
   t: (key: TranslationKey) => string;
   activateLocalMode: () => Promise<void>;
   activateCloudSession: (status: CachedAuthStatus) => Promise<void>;
@@ -25,15 +26,30 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: PropsWithChildren) {
-  // This synchronous selection is the no-spinner startup decision. Network
-  // revalidation can replace it later without blocking first paint.
-  const [selection, setSelection] = useState(() => resolveAdapter());
+  // Start with a safe local adapter while native secure storage is read.
+  const [selection, setSelection] = useState(() => resolveAdapter(localStatus()));
   const [locale, setLocaleState] = useState<AppLocale>("en");
   const [theme, setThemeState] = useState<ThemeMode>("light");
   const [defaultWaterTargetMl, setDefaultWaterTargetMl] = useState(2000);
   const [initialized, setInitialized] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
+    if (authReady) return;
+    let active = true;
+    void readCachedAuthStatus(selection.status)
+      .then((status) => {
+        if (active) setSelection(resolveAdapter(status));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+    return () => { active = false; };
+  }, [authReady, selection.status]);
+
+  useEffect(() => {
+    if (!authReady) return;
     let active = true;
     void selection.adapter.ensureProfile()
       .then(({ settings }) => {
@@ -47,28 +63,29 @@ export function AppProvider({ children }: PropsWithChildren) {
         if (active) setInitialized(true);
       });
     return () => { active = false; };
-  }, [selection.adapter]);
+  }, [authReady, selection.adapter]);
 
   useEffect(() => {
+    if (!authReady) return;
     let active = true;
     void revalidateCloudSession(selection.status).then(async (next) => {
       if (!active || !next) return;
       if (JSON.stringify(next) === JSON.stringify(selection.status)) return;
       await writeCachedAuthStatus(next);
-      if (active) setSelection(resolveAdapter());
+      if (active) setSelection(resolveAdapter(next));
     });
     return () => { active = false; };
-  }, [selection.status]);
+  }, [authReady, selection.status]);
 
   const activateLocalMode = useCallback(async () => {
     const next = { ...selection.status, subscribed: false, localMirror: false, testMode: true, accessToken: null } satisfies CachedAuthStatus;
     if (Platform.OS !== "web") await writeCachedAuthStatus(next);
-    setSelection(resolveAdapter());
+    setSelection(resolveAdapter(next));
   }, [selection.status]);
 
   const activateCloudSession = useCallback(async (status: CachedAuthStatus) => {
     await writeCachedAuthStatus(status);
-    setSelection(resolveAdapter());
+    setSelection(resolveAdapter(status));
   }, []);
 
   const setLocale = useCallback(async (nextLocale: AppLocale) => {
@@ -89,12 +106,13 @@ export function AppProvider({ children }: PropsWithChildren) {
     theme,
     defaultWaterTargetMl,
     initialized,
+    authReady,
     t: (key) => dictionaries[locale][key] ?? dictionaries.en[key] ?? key,
     activateLocalMode,
     activateCloudSession,
     setLocale,
     setTheme
-  }), [activateCloudSession, activateLocalMode, defaultWaterTargetMl, initialized, locale, selection, setLocale, setTheme, theme]);
+  }), [activateCloudSession, activateLocalMode, authReady, defaultWaterTargetMl, initialized, locale, selection, setLocale, setTheme, theme]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
