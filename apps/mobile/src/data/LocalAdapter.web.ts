@@ -28,6 +28,7 @@ export class LocalAdapter implements DataAdapter {
   saveIngredientScan: DataAdapter["saveIngredientScan"] = () => this.unavailable();
   getRecipes: DataAdapter["getRecipes"] = () => this.unavailable();
   generateRecipes: DataAdapter["generateRecipes"] = () => this.unavailable();
+  setRecipeFavorite: DataAdapter["setRecipeFavorite"] = () => this.unavailable();
   getWater: DataAdapter["getWater"] = () => this.unavailable();
   addWater: DataAdapter["addWater"] = () => this.unavailable();
   setWaterTarget: DataAdapter["setWaterTarget"] = () => this.unavailable();

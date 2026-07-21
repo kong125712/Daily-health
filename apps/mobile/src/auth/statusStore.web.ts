@@ -1,1 +1,1 @@
-export { readCachedAuthStatus, writeCachedAuthStatus } from "./status.web";
+export { readCachedAuthStatus, writeCachedAuthStatus } from "./statusPersistence.web";

@@ -87,6 +87,7 @@ export interface DataAdapter {
 
   getRecipes(): Promise<RecipeView[]>;
   generateRecipes(input: { scanId: string; locale: AppLocale; preferences: RecipePreferenceInput }): Promise<RecipeView[]>;
+  setRecipeFavorite(recipeId: string, isFavorite: boolean): Promise<RecipeView>;
 
   getWater(date: string): Promise<WaterSummary>;
   addWater(input: { date: string; amountMl: number }): Promise<WaterSummary>;

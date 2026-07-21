@@ -3,7 +3,7 @@ name: Expo Android Verify
 on:
   workflow_dispatch:
   push:
-    branches: [expo-migration]
+    branches: [main, expo-migration]
     paths:
       - "apps/mobile/**"
       - "server/**"
@@ -39,18 +39,22 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
 
       - uses: android-actions/setup-android@v4
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Check Expo dependency compatibility
         run: pnpm --filter @daily-health/mobile exec expo install --check
 
       - name: Assert safe mobile startup source
         run: |
+          if test -e apps/mobile/src/auth/status.native.ts || test -e apps/mobile/src/auth/status.web.ts; then
+            echo "::error::Platform persistence files must not shadow the auth/status data module."
+            exit 1
+          fi
           if grep -R -nE 'SecureStore\.getItem\(' apps/mobile; then
             echo "::error::Mobile startup must not use the unavailable synchronous SecureStore API."
             exit 1
@@ -59,6 +63,7 @@ jobs:
             echo "::error::Mobile IDs must not depend on a platform crypto polyfill."
             exit 1
           fi
+          grep -F 'export function localStatus' apps/mobile/src/auth/status.ts
           grep -F 'createLocalSelection(localStatus())' apps/mobile/src/state/AppProvider.tsx
           if grep -F 'useState(() => resolveAdapter' apps/mobile/src/state/AppProvider.tsx; then
             echo "::error::AppProvider must not initialize a platform adapter during its first render."
@@ -76,7 +81,10 @@ jobs:
         run: |
           pnpm --filter @daily-health/mobile prebuild:android
           cd apps/mobile/android
-          ./gradlew assembleDebug
+          sed -i 's/gradle-9\.3\.1-bin/gradle-8.14.3-bin/' gradle/wrapper/gradle-wrapper.properties
+          sed -i -E 's/^org\.gradle\.jvmargs=.*/org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8/' gradle.properties
+          ./gradlew --version
+          ./gradlew assembleDebug -PreactNativeArchitectures=x86_64 --no-daemon
 
       - name: Assert the APK has no embedded server stack
         run: |
@@ -86,3 +94,30 @@ jobs:
             echo "::error::Expo APK still contains an embedded Node/Capacitor/Prisma artifact."
             exit 1
           fi
+          unzip -l "$apk" | grep -F 'lib/x86_64/'
+          if unzip -l "$apk" | grep -E 'lib/(armeabi-v7a|arm64-v8a|x86)/'; then
+            echo "::error::Verify APK contains an unintended native library ABI."
+            exit 1
+          fi
+          if [ "$(stat -c%s "$apk")" -ge 200000000 ]; then
+            echo "::error::Verify APK exceeds the 200 MB size budget."
+            exit 1
+          fi
+
+      - name: Cold-start the APK on an Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          # android-emulator-runner executes each literal line in its own shell.
+          # Use a folded scalar so the installation and assertions share one shell.
+          script: >-
+            adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk;
+            adb logcat -c;
+            adb shell monkey -p com.dailyhealth.mobile 1 >/dev/null;
+            for _ in $(seq 1 15); do if adb shell pidof com.dailyhealth.mobile | tr -d '\r' | grep -q '[0-9]'; then break; fi; sleep 1; done;
+            test -n "$(adb shell pidof com.dailyhealth.mobile | tr -d '\r')" || { adb logcat -d -v threadtime; exit 1; };
+            adb logcat -d -v threadtime | tee /tmp/daily-health-logcat.txt;
+            if grep -A 40 -B 5 -F 'Process: com.dailyhealth.mobile' /tmp/daily-health-logcat.txt | grep -E 'FATAL EXCEPTION|SecureStore.*not implemented|undefined is not a function'; then exit 1; fi

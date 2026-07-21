@@ -144,6 +144,13 @@ export class RemoteAdapter implements DataAdapter {
     })).recipes;
   }
 
+  async setRecipeFavorite(recipeId: string, isFavorite: boolean) {
+    return (await this.request<{ recipe: RecipeView }>("/api/recipes", {
+      method: "PATCH",
+      body: JSON.stringify({ recipeId, isFavorite })
+    })).recipe;
+  }
+
   async getWater(date: string) {
     return (await this.request<{ water: WaterSummary }>(`/api/water?date=${encodeURIComponent(date)}`)).water;
   }

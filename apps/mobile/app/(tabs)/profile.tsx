@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { calculateDailyCalorieTarget } from "../../../../lib/services/calorieTargets";
@@ -197,6 +198,17 @@ export default function ProfileScreen() {
           <Text style={shared.sectionTitle}>{t("profile.aiSettings")}</Text>
           <Text style={shared.helper}>Cloud AI is managed by your active subscription. Your personal provider keys are never uploaded to the cloud service.</Text>
         </View>}
+
+        <View style={shared.panel}>
+          <Text style={shared.sectionTitle}>App tools</Text>
+          <Text style={shared.helper}>Review app status, update preferences, or revisit your daily records.</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <Link href="/(tabs)/settings" style={shared.secondaryButton}>Settings</Link>
+            <Link href="/(tabs)/status" style={shared.secondaryButton}>Service status</Link>
+            <Link href="/(tabs)/history" style={shared.secondaryButton}>Daily history</Link>
+            <Link href={{ pathname: "/(tabs)/my-recipes", params: { saved: "1" } }} style={shared.secondaryButton}>Saved recipes</Link>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
