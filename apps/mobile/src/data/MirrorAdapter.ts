@@ -101,6 +101,12 @@ export class MirrorAdapter implements DataAdapter {
     return value;
   }
 
+  async setRecipeFavorite(recipeId: string, isFavorite: boolean): Promise<RecipeView> {
+    const value = await this.primary.setRecipeFavorite(recipeId, isFavorite);
+    void this.mirror.upsertRecipe(value).catch(() => undefined);
+    return value;
+  }
+
   async getWater(date: string): Promise<WaterSummary> {
     const value = await this.primary.getWater(date);
     void this.mirror.replaceWaterSummary(value).catch(() => undefined);

@@ -486,6 +486,14 @@ export class LocalAdapter implements DataAdapter {
     return (await this.listRecords<RecipeView>("recipe")).map((record) => record.data);
   }
 
+  async setRecipeFavorite(recipeId: string, isFavorite: boolean) {
+    const existing = await this.getRecord<RecipeView>("recipe", recipeId);
+    if (!existing) throw new DataAdapterError("Recipe not found.", 404, "RECIPE_NOT_FOUND");
+    const recipe = { ...existing.data, isFavorite, updatedAt: now() };
+    await this.saveRecord("recipe", recipe.id, recipe, recipe.createdAt.slice(0, 10), existing.createdAt);
+    return recipe;
+  }
+
   async generateRecipes(input: { scanId: string; locale: "en" | "zh-CN"; preferences: import("../domain").RecipePreferenceInput }) {
     const scan = await this.getRecord<IngredientScanView>("ingredient-scan", input.scanId);
     if (!scan) throw new DataAdapterError("Ingredient scan not found.", 404, "SCAN_NOT_FOUND");

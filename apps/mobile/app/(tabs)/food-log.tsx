@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { buildNutritionSummary } from "../../../../lib/services/nutritionStructure";
 import type { FoodLogView } from "../../src/domain";
 import { useApp } from "../../src/state/AppProvider";
 import { colors, shared } from "../../src/ui/styles";
@@ -17,19 +18,27 @@ export default function FoodLogScreen() {
   const [category, setCategory] = useState<Category>("breakfast");
   const [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const load = useCallback(async () => { setBusy(true); try { setLogs(await adapter.getFoodLogs(date)); } catch (error) { setMessage(error instanceof Error ? error.message : t("common.error")); } finally { setBusy(false); } }, [adapter, date, t]);
   useEffect(() => { void load(); }, [load]);
   const total = logs.reduce((sum, item) => sum + (item.calories ?? 0), 0);
+  const nutrition = buildNutritionSummary(logs, total);
+  const macros = [
+    { label: "Protein", grams: nutrition.proteinGrams, percent: nutrition.proteinPercent, color: colors.leaf },
+    { label: "Carbohydrates", grams: nutrition.carbsGrams, percent: nutrition.carbsPercent, color: "#D97706" },
+    { label: "Fat", grams: nutrition.fatGrams, percent: nutrition.fatPercent, color: "#7C3AED" }
+  ];
 
   async function save() {
     if (!form.name.trim()) { setMessage("Enter a food name."); return; }
     setBusy(true); setMessage(null);
     try {
       await adapter.saveFoodLog({ recipeId: null, date, mealCategory: category, nameEn: form.name.trim(), nameZh: locale === "zh-CN" ? form.name.trim() : null, calories: numeric(form.calories), proteinGrams: numeric(form.protein), carbsGrams: numeric(form.carbs), fatGrams: numeric(form.fat), notes: form.notes || null, sourceType: "manual" });
-      setForm(blank); await load();
+      setForm(blank); setShowManualForm(false); await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : t("common.error")); } finally { setBusy(false); }
   }
+
   async function remove(id: string) { setBusy(true); try { await adapter.deleteFoodLog(id); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : t("common.error")); } finally { setBusy(false); } }
   const field = (placeholder: string, value: string, onChangeText: (text: string) => void, keyboardType: "default" | "numeric" = "default") => <TextInput placeholder={placeholder} value={value} onChangeText={onChangeText} keyboardType={keyboardType} style={shared.input} />;
 
@@ -37,14 +46,26 @@ export default function FoodLogScreen() {
     <View style={shared.header}><Text style={shared.title}>{t("food.title")}</Text><Text style={shared.subtitle}>{total} kcal {t("food.dailyTotal").toLowerCase()}</Text></View>
     {message ? <Text style={shared.error}>{message}</Text> : null}
     <View style={shared.panel}>
-      <Text style={shared.label}>{t("common.date")}</Text><TextInput value={date} onChangeText={setDate} style={shared.input} placeholder="YYYY-MM-DD" />
-      <Text style={shared.label}>Meal</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[shared.secondaryButton, category === item && { backgroundColor: colors.mint }]}><Text style={shared.secondaryButtonText}>{item}</Text></Pressable>)}</View>
-      {field("Food name", form.name, (name) => setForm({ ...form, name }))}
-      <View style={shared.row}><View style={shared.flex}>{field("Calories", form.calories, (calories) => setForm({ ...form, calories }), "numeric")}</View><View style={shared.flex}>{field("Protein g", form.protein, (protein) => setForm({ ...form, protein }), "numeric")}</View></View>
-      <View style={shared.row}><View style={shared.flex}>{field("Carbs g", form.carbs, (carbs) => setForm({ ...form, carbs }), "numeric")}</View><View style={shared.flex}>{field("Fat g", form.fat, (fat) => setForm({ ...form, fat }), "numeric")}</View></View>
-      {field("Notes (optional)", form.notes, (notes) => setForm({ ...form, notes }))}
-      <Pressable disabled={busy} style={[shared.primaryButton, busy && { opacity: 0.6 }]} onPress={() => void save()}>{busy ? <ActivityIndicator color="white" /> : <Text style={shared.primaryButtonText}>{t("common.save")}</Text>}</Pressable>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}><Text style={shared.sectionTitle}>Manual food</Text><Pressable style={shared.secondaryButton} onPress={() => setShowManualForm((value) => !value)}><Text style={shared.secondaryButtonText}>{showManualForm ? "Close" : "Add food"}</Text></Pressable></View>
+      {showManualForm ? <>
+        <Text style={shared.label}>{t("common.date")}</Text><TextInput value={date} onChangeText={setDate} style={shared.input} placeholder="YYYY-MM-DD" />
+        <Text style={shared.label}>Meal</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[shared.secondaryButton, category === item && { backgroundColor: colors.mint }]}><Text style={shared.secondaryButtonText}>{item}</Text></Pressable>)}</View>
+        {field("Food name", form.name, (name) => setForm({ ...form, name }))}
+        <View style={shared.row}><View style={shared.flex}>{field("Calories", form.calories, (calories) => setForm({ ...form, calories }), "numeric")}</View><View style={shared.flex}>{field("Protein g", form.protein, (protein) => setForm({ ...form, protein }), "numeric")}</View></View>
+        <View style={shared.row}><View style={shared.flex}>{field("Carbs g", form.carbs, (carbs) => setForm({ ...form, carbs }), "numeric")}</View><View style={shared.flex}>{field("Fat g", form.fat, (fat) => setForm({ ...form, fat }), "numeric")}</View></View>
+        {field("Notes (optional)", form.notes, (notes) => setForm({ ...form, notes }))}
+        <Pressable disabled={busy} style={[shared.primaryButton, busy && { opacity: 0.6 }]} onPress={() => void save()}>{busy ? <ActivityIndicator color="white" /> : <Text style={shared.primaryButtonText}>{t("common.save")}</Text>}</Pressable>
+      </> : <Text style={shared.helper}>Add a meal when you want to track food that was not scanned or generated from a recipe.</Text>}
     </View>
-    <View style={shared.panel}><Text style={shared.sectionTitle}>{t("food.dailyTotal")} · {total} kcal</Text>{logs.length === 0 ? <Text style={shared.helper}>{t("food.empty")}</Text> : categories.map((item) => <View key={item} style={{ gap: 6 }}><Text style={{ color: colors.text, fontWeight: "700", textTransform: "capitalize" }}>{item}</Text>{logs.filter((log) => log.mealCategory === item).map((log) => <View key={log.id} style={{ borderTopColor: colors.line, borderTopWidth: 1, paddingTop: 8, gap: 3 }}><Text style={{ color: colors.text, fontWeight: "700" }}>{locale === "zh-CN" ? log.nameZh ?? log.nameEn : log.nameEn}</Text><Text style={shared.helper}>{log.calories ?? 0} kcal · P {log.proteinGrams ?? 0}g · C {log.carbsGrams ?? 0}g · F {log.fatGrams ?? 0}g</Text><Pressable disabled={busy} onPress={() => void remove(log.id)}><Text style={{ color: colors.danger, fontWeight: "700" }}>{t("common.delete")}</Text></Pressable></View>)}</View>)}</View>
+    <View style={shared.panel}>
+      <Text style={shared.sectionTitle}>Nutrition structure</Text>
+      <Text style={shared.helper}>{nutrition.trackedEntries ? `${nutrition.trackedEntries} tracked entries` : "Add protein, carbohydrate, or fat values to see a macro breakdown."}</Text>
+      {macros.map((macro) => <View key={macro.label} style={{ gap: 4 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={shared.helper}>{macro.label}</Text><Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>{macro.grams} g | {macro.percent}%</Text></View>
+        <View style={{ height: 7, borderRadius: 4, overflow: "hidden", backgroundColor: colors.mint }}><View style={{ height: "100%", width: `${macro.percent}%`, backgroundColor: macro.color }} /></View>
+      </View>)}
+      <Text style={shared.helper}>Tracked macro energy: {nutrition.trackedMacroCalories} kcal | Untracked: {nutrition.untrackedCalories} kcal</Text>
+    </View>
+    <View style={shared.panel}><Text style={shared.sectionTitle}>{t("food.dailyTotal")} | {total} kcal</Text>{logs.length === 0 ? <Text style={shared.helper}>{t("food.empty")}</Text> : categories.map((item) => <View key={item} style={{ gap: 6 }}><Text style={{ color: colors.text, fontWeight: "700", textTransform: "capitalize" }}>{item}</Text>{logs.filter((log) => log.mealCategory === item).map((log) => <View key={log.id} style={{ borderTopColor: colors.line, borderTopWidth: 1, paddingTop: 8, gap: 3 }}><Text style={{ color: colors.text, fontWeight: "700" }}>{locale === "zh-CN" ? log.nameZh ?? log.nameEn : log.nameEn}</Text><Text style={shared.helper}>{log.calories ?? 0} kcal | P {log.proteinGrams ?? 0}g | C {log.carbsGrams ?? 0}g | F {log.fatGrams ?? 0}g</Text><Pressable disabled={busy} onPress={() => void remove(log.id)}><Text style={{ color: colors.danger, fontWeight: "700" }}>{t("common.delete")}</Text></Pressable></View>)}</View>)}</View>
   </ScrollView></SafeAreaView>;
 }

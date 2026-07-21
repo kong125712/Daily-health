@@ -1,1 +1,1 @@
-export { readCachedAuthStatus, writeCachedAuthStatus } from "./status.native";
+export { readCachedAuthStatus, writeCachedAuthStatus } from "./statusPersistence.native";
