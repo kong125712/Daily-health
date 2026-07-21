@@ -111,20 +111,13 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          script: |
-            apk="apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk"
-            adb install -r "$apk"
-            adb logcat -c
-            adb shell monkey -p com.dailyhealth.mobile 1 >/dev/null
-            for _ in $(seq 1 15); do
-              if adb shell pidof com.dailyhealth.mobile | tr -d '\r' | grep -q '[0-9]'; then
-                break
-              fi
-              sleep 1
-            done
-            pid="$(adb shell pidof com.dailyhealth.mobile | tr -d '\r')"
-            test -n "$pid" || { adb logcat -d -v threadtime; exit 1; }
-            adb logcat -d -v threadtime | tee /tmp/daily-health-logcat.txt
-            if grep -A 40 -B 5 -F 'Process: com.dailyhealth.mobile' /tmp/daily-health-logcat.txt | grep -E 'FATAL EXCEPTION|SecureStore.*not implemented|undefined is not a function'; then
-              exit 1
-            fi
+          # android-emulator-runner executes each literal line in its own shell.
+          # Use a folded scalar so the installation and assertions share one shell.
+          script: >-
+            adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk;
+            adb logcat -c;
+            adb shell monkey -p com.dailyhealth.mobile 1 >/dev/null;
+            for _ in $(seq 1 15); do if adb shell pidof com.dailyhealth.mobile | tr -d '\r' | grep -q '[0-9]'; then break; fi; sleep 1; done;
+            test -n "$(adb shell pidof com.dailyhealth.mobile | tr -d '\r')" || { adb logcat -d -v threadtime; exit 1; };
+            adb logcat -d -v threadtime | tee /tmp/daily-health-logcat.txt;
+            if grep -A 40 -B 5 -F 'Process: com.dailyhealth.mobile' /tmp/daily-health-logcat.txt | grep -E 'FATAL EXCEPTION|SecureStore.*not implemented|undefined is not a function'; then exit 1; fi
