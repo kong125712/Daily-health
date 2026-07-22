@@ -116,8 +116,13 @@ jobs:
           script: >-
             adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk;
             adb logcat -c;
+            adb shell am force-stop com.dailyhealth.mobile;
             adb shell monkey -p com.dailyhealth.mobile 1 >/dev/null;
-            for _ in $(seq 1 15); do if adb shell pidof com.dailyhealth.mobile | tr -d '\r' | grep -q '[0-9]'; then break; fi; sleep 1; done;
-            test -n "$(adb shell pidof com.dailyhealth.mobile | tr -d '\r')" || { adb logcat -d -v threadtime; exit 1; };
+            app_pid='';
+            for _ in $(seq 1 60); do app_pid="$(adb shell pidof com.dailyhealth.mobile 2>/dev/null | tr -d '\r')"; if [ -n "$app_pid" ]; then break; fi; sleep 1; done;
+            if [ -z "$app_pid" ]; then echo '::error::Daily Health did not create an Android process within 60 seconds.'; adb shell dumpsys activity activities | grep -A 12 -B 4 com.dailyhealth.mobile || true; adb logcat -d -v threadtime; exit 1; fi;
+            echo "Daily Health process started with PID $app_pid.";
+            sleep 5;
+            if ! adb shell pidof com.dailyhealth.mobile | tr -d '\r' | grep -q '[0-9]'; then echo '::error::Daily Health process exited during startup.'; adb logcat -d -v threadtime; exit 1; fi;
             adb logcat -d -v threadtime | tee /tmp/daily-health-logcat.txt;
             if grep -A 40 -B 5 -F 'Process: com.dailyhealth.mobile' /tmp/daily-health-logcat.txt | grep -E 'FATAL EXCEPTION|SecureStore.*not implemented|undefined is not a function'; then exit 1; fi
