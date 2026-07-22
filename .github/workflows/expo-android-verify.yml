@@ -104,13 +104,24 @@ jobs:
             exit 1
           fi
 
+      # GitHub's Ubuntu runners expose KVM but require this permission rule.
+      # Without it the Android system image may time out before the test script runs.
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Cold-start the APK on an Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           # android-emulator-runner executes each literal line in its own shell.
           # Use a folded scalar so the installation and assertions share one shell.
           script: >-
