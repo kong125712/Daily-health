@@ -5,6 +5,7 @@ import type {
   RecognizedIngredientInput,
   RecipePreferenceInput
 } from "@/lib/types/domain";
+import { estimateRecipeNutrition } from "./recipeNutritionService";
 
 type DishTemplate = {
   format: "stir-fry" | "soup" | "bowl";
@@ -287,6 +288,7 @@ export function generateFallbackRecipes(input: {
 
   return templates.map((template, index) => {
     const minutes = cookingMinutes(input.preferences, index);
+    const nutrition = estimateRecipeNutrition(input.ingredients, index, 2);
     const pairingTextEn = pairing && !input.preferences.recognizedOnly ? ` with ${pairing}` : "";
     const pairingTextZh = pairing && !input.preferences.recognizedOnly ? `搭配${pairing}` : "";
     return {
@@ -295,10 +297,10 @@ export function generateFallbackRecipes(input: {
       referenceImageQuery: `${names.en} ${template.imageSuffix}`.toLowerCase().slice(0, 120),
       estimatedCookingMinutes: minutes,
       servings: 2,
-      estimatedCaloriesPerServing: 0,
-      estimatedProteinGramsPerServing: 0,
-      estimatedCarbsGramsPerServing: 0,
-      estimatedFatGramsPerServing: 0,
+      estimatedCaloriesPerServing: nutrition.calories,
+      estimatedProteinGramsPerServing: nutrition.proteinGrams,
+      estimatedCarbsGramsPerServing: nutrition.carbsGrams,
+      estimatedFatGramsPerServing: nutrition.fatGrams,
       translations: [
         {
           locale: "en",

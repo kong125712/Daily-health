@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { IngredientScanView, RecipePreferenceInput, RecipeView } from "../../src/domain";
+import { estimateRecipeNutrition } from "../../../../lib/services/recipeNutritionService";
+import type { FoodLogView, IngredientScanView, RecipePreferenceInput, RecipeView } from "../../src/domain";
 import { useApp } from "../../src/state/AppProvider";
 import { colors, shared } from "../../src/ui/styles";
+import { isoToday } from "../../src/utils/date";
 
 const defaultPreferences: RecipePreferenceInput = {
   cuisine: "No Preference",
@@ -33,6 +35,7 @@ function recipeTitle(recipe: RecipeView, locale: "en" | "zh-CN") {
 
 export default function RecipesScreen() {
   const { adapter, locale, t } = useApp();
+  const router = useRouter();
   const { saved } = useLocalSearchParams<{ saved?: string }>();
   const [scans, setScans] = useState<IngredientScanView[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
@@ -42,6 +45,8 @@ export default function RecipesScreen() {
   const [showSavedOnly, setShowSavedOnly] = useState(saved === "1");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [foodLogCategory, setFoodLogCategory] = useState<FoodLogView["mealCategory"]>("dinner");
+  const [addingRecipeId, setAddingRecipeId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +102,42 @@ export default function RecipesScreen() {
     }
   }
 
+  function nutritionFor(recipe: RecipeView) {
+    const fallback = estimateRecipeNutrition(recipe.ingredients, 0, recipe.servings);
+    return {
+      calories: recipe.estimatedCaloriesPerServing ?? fallback.calories,
+      proteinGrams: recipe.estimatedProteinGramsPerServing ?? fallback.proteinGrams,
+      carbsGrams: recipe.estimatedCarbsGramsPerServing ?? fallback.carbsGrams,
+      fatGrams: recipe.estimatedFatGramsPerServing ?? fallback.fatGrams
+    };
+  }
+
+  async function addRecipeToFoodLog(recipe: RecipeView) {
+    const nutrition = nutritionFor(recipe);
+    setAddingRecipeId(recipe.id);
+    setMessage(null);
+    try {
+      await adapter.saveFoodLog({
+        recipeId: recipe.id,
+        date: isoToday(),
+        mealCategory: foodLogCategory,
+        nameEn: recipeTitle(recipe, "en"),
+        nameZh: recipe.translations.find((item) => item.locale === "zh-CN")?.title ?? null,
+        calories: nutrition.calories,
+        proteinGrams: nutrition.proteinGrams,
+        carbsGrams: nutrition.carbsGrams,
+        fatGrams: nutrition.fatGrams,
+        notes: "One recipe serving.",
+        sourceType: "recipe"
+      });
+      router.push("/(tabs)/food-log");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("common.error"));
+    } finally {
+      setAddingRecipeId(null);
+    }
+  }
+
   const savedRecipes = useMemo(() => recipes.filter((recipe) => recipe.isFavorite), [recipes]);
   const visibleRecipes = showSavedOnly ? savedRecipes : recipes;
 
@@ -138,9 +179,17 @@ export default function RecipesScreen() {
             <Pressable style={shared.secondaryButton} onPress={() => setShowSavedOnly((value) => !value)}><Text style={shared.secondaryButtonText}>{showSavedOnly ? "Show all" : "Show saved"}</Text></Pressable>
           </View>
         </View>
+        <View style={[shared.panel, { gap: 8 }]}>
+          <Text style={shared.sectionTitle}>Add recipe to food log</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
+            {(["breakfast", "lunch", "dinner", "snack"] as const).map((category) => <Pressable key={category} onPress={() => setFoodLogCategory(category)} style={[shared.secondaryButton, foodLogCategory === category && { backgroundColor: colors.mint }]}><Text style={shared.secondaryButtonText}>{category}</Text></Pressable>)}
+          </View>
+          <Text style={shared.helper}>Recipe actions add one serving to this meal today.</Text>
+        </View>
         {visibleRecipes.length === 0 ? <View style={shared.panel}><Text style={shared.helper}>{showSavedOnly ? "No saved recipes yet." : t("recipes.noRecipes")}</Text></View> : null}
         {visibleRecipes.map((recipe) => {
           const translation = recipe.translations.find((item) => item.locale === locale) ?? recipe.translations.find((item) => item.locale === "en") ?? recipe.translations[0];
+          const nutrition = nutritionFor(recipe);
           return <View key={recipe.id} style={shared.panel}>
             <Text style={shared.sectionTitle}>{recipeTitle(recipe, locale)}</Text>
             {translation ? <Text style={shared.helper}>{translation.shortDescription}</Text> : null}
@@ -148,16 +197,19 @@ export default function RecipesScreen() {
             <Text style={shared.helper}>{recipe.estimatedCookingMinutes} {t("common.minutes")} | {recipe.difficulty} | {recipe.servings} servings</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {[
-                ["Calories", recipe.estimatedCaloriesPerServing, "kcal"],
-                ["Protein", recipe.estimatedProteinGramsPerServing, "g"],
-                ["Carbs", recipe.estimatedCarbsGramsPerServing, "g"],
-                ["Fat", recipe.estimatedFatGramsPerServing, "g"]
+                ["Calories", nutrition.calories, "kcal"],
+                ["Protein", nutrition.proteinGrams, "g"],
+                ["Carbs", nutrition.carbsGrams, "g"],
+                ["Fat", nutrition.fatGrams, "g"]
               ].map(([label, value, unit]) => <View key={String(label)} style={{ minWidth: "44%", flexGrow: 1, borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 10, gap: 2 }}><Text style={shared.helper}>{label}</Text><Text style={{ color: colors.text, fontWeight: "700" }}>{value ?? "-"} {unit}</Text></View>)}
             </View>
             <View style={shared.row}>
               <Pressable style={[shared.secondaryButton, shared.flex, recipe.isFavorite && { backgroundColor: colors.mint }]} onPress={() => void toggleFavorite(recipe)}><Text style={shared.secondaryButtonText}>{recipe.isFavorite ? "Saved recipe" : "Save recipe"}</Text></Pressable>
               <Pressable style={[shared.secondaryButton, shared.flex]} onPress={() => setExpandedRecipeId((current) => current === recipe.id ? null : recipe.id)}><Text style={shared.secondaryButtonText}>{expandedRecipeId === recipe.id ? "Hide details" : "View details"}</Text></Pressable>
             </View>
+            <Pressable disabled={addingRecipeId === recipe.id} style={[shared.primaryButton, addingRecipeId === recipe.id && { opacity: 0.55 }]} onPress={() => void addRecipeToFoodLog(recipe)}>
+              {addingRecipeId === recipe.id ? <ActivityIndicator color="white" /> : <Text style={shared.primaryButtonText}>Add 1 serving to food log</Text>}
+            </Pressable>
             {expandedRecipeId === recipe.id ? <>
               <Text style={{ color: colors.text, fontWeight: "700" }}>{t("recipes.ingredients")}</Text>
               {recipe.ingredients.map((ingredient) => <Text key={ingredient.id} style={shared.helper}>- {locale === "zh-CN" ? ingredient.nameZh : ingredient.nameEn}: {ingredient.amount}</Text>)}

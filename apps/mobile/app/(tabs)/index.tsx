@@ -1,5 +1,5 @@
-import { Link } from "expo-router";
-import { useEffect, useState } from "react";
+import { Link, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { calculateHealthScore } from "../../../../lib/services/healthScore";
@@ -25,8 +25,9 @@ export default function HomeScreen() {
   const [recentHistories, setRecentHistories] = useState<DailyHistoryView[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
     let active = true;
+    setError(null);
     const dates = recentIsoDates(7).reverse();
     void Promise.all([
       adapter.getHistory(isoToday()),
@@ -44,6 +45,9 @@ export default function HomeScreen() {
       .catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : t("common.error")));
     return () => { active = false; };
   }, [adapter, t]);
+
+  // Refresh when returning from a tracker so today's water and food totals stay current.
+  useFocusEffect(loadDashboard);
 
   if (!history) {
     return <SafeAreaView style={shared.page}><View style={[shared.content, { alignItems: "center", paddingTop: 48, gap: 12 }]}>{error ? <Text style={shared.error}>{error}</Text> : <ActivityIndicator color={colors.leaf} />}</View></SafeAreaView>;
