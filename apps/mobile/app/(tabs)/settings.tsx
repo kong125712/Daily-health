@@ -1,4 +1,3 @@
-import { FontAwesome6 } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,7 +7,7 @@ import { colors, shared } from "../../src/ui/styles";
 import { numeric } from "../../src/utils/date";
 
 export default function SettingsScreen() {
-  const { adapter, defaultWaterTargetMl, locale, setLocale, setTheme, t, theme } = useApp();
+  const { adapter, defaultWaterTargetMl, setTheme, t, theme } = useApp();
   const [waterTarget, setWaterTarget] = useState(String(defaultWaterTargetMl));
   const [message, setMessage] = useState<string | null>(null);
 
@@ -31,19 +30,6 @@ export default function SettingsScreen() {
         </View>
 
         {message ? <Text style={message === t("common.success") ? { color: colors.leaf } : shared.error}>{message}</Text> : null}
-
-        <View style={shared.panel}>
-          <Text style={shared.sectionTitle}>{t("settings.language")}</Text>
-          <Pressable
-            accessibilityLabel={t("settings.language")}
-            accessibilityRole="button"
-            onPress={() => void setLocale(locale === "en" ? "zh-CN" : "en")}
-            style={[shared.secondaryButton, { alignSelf: "stretch", alignItems: "center", flexDirection: "row", justifyContent: "space-between" }]}
-          >
-            <Text style={shared.secondaryButtonText}>{locale === "en" ? "English" : "简体中文"}</Text>
-            <FontAwesome6 name="caret-right" size={14} color={colors.leaf} />
-          </Pressable>
-        </View>
 
         <View style={shared.panel}>
           <Text style={shared.sectionTitle}>{t("settings.theme")}</Text>
