@@ -37,7 +37,7 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --config.trustLockfile=true --no-frozen-lockfile
       - run: pnpm --filter @daily-health/mobile exec expo install --check
       - run: pnpm --filter @daily-health/mobile typecheck
       - run: pnpm --filter @daily-health/mobile export:web
