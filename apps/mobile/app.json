@@ -3,6 +3,7 @@
     "name": "Daily Health",
     "slug": "daily-health",
     "version": "2.0.0",
+    "icon": "./assets/logo.png",
     "orientation": "portrait",
     "scheme": "dailyhealth",
     "userInterfaceStyle": "light",
@@ -22,6 +23,7 @@
       "package": "com.dailyhealth.mobile",
       "versionCode": 2000000,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#F4FBF6"
       }
     },
