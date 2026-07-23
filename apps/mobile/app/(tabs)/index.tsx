@@ -1,10 +1,9 @@
-import { FontAwesome6 } from "@expo/vector-icons";
 import { Link, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { calculateHealthScore } from "../../../../lib/services/healthScore";
-import type { AppLocale, DailyHistoryView, UserProfileView, WeightLogView } from "../../src/domain";
+import type { DailyHistoryView, UserProfileView, WeightLogView } from "../../src/domain";
 import { useApp } from "../../src/state/AppProvider";
 import { colors, shared } from "../../src/ui/styles";
 import { isoToday, recentIsoDates } from "../../src/utils/date";
@@ -18,19 +17,13 @@ const dashboardLinks = [
   { href: "/(tabs)/settings", label: "Settings" }
 ] as const;
 
-const languageOptions: Array<{ code: AppLocale; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "zh-CN", label: "华语" }
-];
-
 export default function HomeScreen() {
-  const { adapter, locale, setLocale, t } = useApp();
+  const { adapter, t } = useApp();
   const [history, setHistory] = useState<DailyHistoryView | null>(null);
   const [profile, setProfile] = useState<UserProfileView | null>(null);
   const [latestWeight, setLatestWeight] = useState<WeightLogView | null>(null);
   const [recentHistories, setRecentHistories] = useState<DailyHistoryView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
 
   const loadDashboard = useCallback(() => {
     let active = true;
@@ -64,42 +57,12 @@ export default function HomeScreen() {
   const score = healthScore?.score ?? 0;
   const trend = profile ? recentHistories.map((item) => ({ date: item.date, score: calculateHealthScore({ history: item, profile }).score })) : [];
 
-  async function chooseLanguage(nextLocale: AppLocale) {
-    setLanguagePickerOpen(false);
-    await setLocale(nextLocale);
-  }
-
   return (
     <SafeAreaView style={shared.page} edges={["left", "right"]}>
       <ScrollView contentContainerStyle={shared.content}>
-        <View style={[shared.header, { alignItems: "flex-start", flexDirection: "row", gap: 12, justifyContent: "space-between", zIndex: 10 }]}>
-          <View style={{ flex: 1, gap: 6 }}>
-            <Text style={shared.title}>{t("dashboard.title")}</Text>
-            <Text style={shared.subtitle}>{profile?.displayName ? `${t("dashboard.subtitle")} - ${profile.displayName}` : t("dashboard.subtitle")}</Text>
-          </View>
-          <View style={{ alignItems: "flex-end", position: "relative", zIndex: 20 }}>
-            <Pressable
-              accessibilityLabel={locale === "en" ? "Choose language" : "选择语言"}
-              accessibilityRole="button"
-              accessibilityState={{ expanded: languagePickerOpen }}
-              onPress={() => setLanguagePickerOpen((open) => !open)}
-              style={{ alignItems: "center", backgroundColor: "#FFFFFF", borderColor: colors.line, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 7, minHeight: 38, paddingHorizontal: 10 }}
-            >
-              <FontAwesome6 name="language" size={14} color={colors.leaf} />
-              <Text style={{ color: colors.text, fontSize: 13, fontWeight: "700" }}>{locale === "en" ? "EN" : "华语"}</Text>
-              <FontAwesome6 name="chevron-down" size={11} color={colors.muted} />
-            </Pressable>
-            {languagePickerOpen ? (
-              <View style={{ backgroundColor: "#FFFFFF", borderColor: colors.line, borderRadius: 8, borderWidth: 1, elevation: 4, gap: 2, minWidth: 130, padding: 4, position: "absolute", right: 0, shadowColor: "#10231A", shadowOpacity: 0.12, shadowRadius: 8, top: 43, zIndex: 30 }}>
-                {languageOptions.map((option) => (
-                  <Pressable key={option.code} onPress={() => void chooseLanguage(option.code)} style={{ alignItems: "center", backgroundColor: locale === option.code ? colors.mint : "transparent", borderRadius: 6, flexDirection: "row", justifyContent: "space-between", minHeight: 38, paddingHorizontal: 10 }}>
-                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: locale === option.code ? "700" : "500" }}>{option.label}</Text>
-                    {locale === option.code ? <FontAwesome6 name="check" size={12} color={colors.leaf} /> : null}
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-          </View>
+        <View style={shared.header}>
+          <Text style={shared.title}>{t("dashboard.title")}</Text>
+          <Text style={shared.subtitle}>{profile?.displayName ? `${t("dashboard.subtitle")} - ${profile.displayName}` : t("dashboard.subtitle")}</Text>
         </View>
         <View style={[shared.panel, { gap: 16 }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
