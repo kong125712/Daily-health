@@ -2,8 +2,15 @@ name: Sync Expo dependency lockfile
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/sync-expo-dependency-lockfile.yml"
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -42,3 +49,21 @@ jobs:
           git add apps/mobile/package.json pnpm-lock.yaml
           git commit -m "chore: sync Expo dependency lockfile"
           git push origin "HEAD:${{ github.ref_name }}"
+
+      - name: Start validation for the synchronized revision
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const workflows = [
+              "expo-android-verify.yml",
+              "web-deploy.yml",
+            ];
+
+            for (const workflow_id of workflows) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id,
+                ref: process.env.GITHUB_REF_NAME,
+              });
+            }
