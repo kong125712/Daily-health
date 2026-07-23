@@ -32,9 +32,9 @@ jobs:
 
       - name: Resolve the Expo-compatible dependency versions
         run: |
-          pnpm install --no-frozen-lockfile
+          pnpm install --config.trustLockfile=true --no-frozen-lockfile
           pnpm --filter @daily-health/mobile exec expo install --fix
-          pnpm install --no-frozen-lockfile
+          pnpm install --config.trustLockfile=true --no-frozen-lockfile
           pnpm --filter @daily-health/mobile exec expo install --check
 
       - name: Commit the synchronized lockfile

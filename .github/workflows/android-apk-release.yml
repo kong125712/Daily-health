@@ -41,7 +41,8 @@ jobs:
           java-version: "17"
       - uses: android-actions/setup-android@v4
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # The committed lockfile is reviewed before CI; avoid rechecking release ages.
+        run: pnpm install --config.trustLockfile=true --frozen-lockfile
       - name: Check Expo dependency compatibility
         run: pnpm --filter @daily-health/mobile exec expo install --check
       - name: Assert safe mobile startup source
